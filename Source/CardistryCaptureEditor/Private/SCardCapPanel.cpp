@@ -1,6 +1,9 @@
 #include "SCardCapPanel.h"
 
 #include "CardCapPythonBridge.h"
+#include "CardCapDisplaySpace.h"
+#include "Editor.h"
+#include "EngineUtils.h"
 #include "Brushes/SlateColorBrush.h"
 #include "DesktopPlatformModule.h"
 #include "Framework/Application/SlateApplication.h"
@@ -8,6 +11,7 @@
 #include "IDesktopPlatform.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
+#include "Misc/PackageName.h"
 #include "Rendering/DrawElements.h"
 #include "Rendering/SlateLayoutTransform.h"
 #include "Styling/CoreStyle.h"
@@ -196,7 +200,7 @@ void SCardCapPanel::Construct(const FArguments& InArgs)
                 [ SNew(SButton).Tag(TEXT("CardCap.OpenAnimation")).Text(LOCTEXT("OpenAnimation", "Open Animation"))
                     .IsEnabled_Lambda([this] { return Bridge.IsValid() && Snapshot().Status == TEXT("succeeded") && !Snapshot().AnimationAsset.IsEmpty() && !Snapshot().IsPerHandLocal(); })
                     .ToolTipText_Lambda([this] { return Snapshot().IsPerHandLocal()
-                        ? LOCTEXT("LocalAnimationUnavailable", "The relative hand positions are unknown. Review the separate left and right hand previews.") : FText::GetEmpty(); })
+                        ? LOCTEXT("LocalAnimationUnavailable", "The source animation contains separate local hand poses. Choose Open Scene to review the display, including common-space assumptions when available.") : FText::GetEmpty(); })
                     .OnClicked_Lambda([this] { if (Bridge.IsValid()) { Bridge->OpenResultAnimation(); } return FReply::Handled(); }) ]
                 + SWrapBox::Slot()
                 [ SNew(SButton).Tag(TEXT("CardCap.Preview")).Text(LOCTEXT("OpenPreview", "Preview Video"))
@@ -258,6 +262,12 @@ void SCardCapPanel::Construct(const FArguments& InArgs)
                         .IsChecked_Lambda([this] { return bRenderPreview ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
                         .OnCheckStateChanged_Lambda([this](ECheckBoxState State) { bRenderPreview = State == ECheckBoxState::Checked; })
                         [ SNew(STextBlock).Text(LOCTEXT("RenderPreview", "Generate a comparison video")) ] ]
+                    + SVerticalBox::Slot().AutoHeight().Padding(8, 0, 8, 8)
+                    [ SNew(SCheckBox).Tag(TEXT("CardCap.SeparateLocalPreview"))
+                        .IsEnabled_Lambda([this] { return CanEdit(); })
+                        .IsChecked_Lambda([this] { return bUseSeparateLocalPreview ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+                        .OnCheckStateChanged_Lambda([this](ECheckBoxState State) { bUseSeparateLocalPreview = State == ECheckBoxState::Checked; })
+                        [ SNew(STextBlock).Text(LOCTEXT("SeparateLocalPreview", "Use Separate Local Preview")) ] ]
                 ]
             ]
         ]
@@ -304,6 +314,7 @@ bool SCardCapPanel::StartProcessing(FString& OutError)
         Options.BoneMappingPath = CleanPath(BoneMappingPath);
         Options.bAllowBlurry = bAllowBlurry;
         Options.bRenderPreview = bRenderPreview;
+        Options.bUseSeparateLocalPreview = bUseSeparateLocalPreview;
         if (Bridge->Start(Options, OutError))
         {
             VideoPath = Options.VideoPath;
@@ -466,7 +477,22 @@ FText SCardCapPanel::SourceNoteText() const
 {
     const FCardCapJobSnapshot& State = Snapshot();
     TArray<FString> Notes;
-    if (State.IsPerHandLocal())
+    if (State.HasCommonDisplay())
+    {
+        double Focal = State.DisplayAssumedFocalPx;
+        FString Ratio = TEXT("see the current frame in the scene");
+        if (GEditor)
+            if (UWorld* World = GEditor->GetEditorWorldContext().World(); World
+                && World->GetOutermost()->GetName() == FPackageName::ObjectPathToPackageName(State.MapAsset))
+                for (TActorIterator<ACardCapDisplaySpaceActor> It(World); It; ++It)
+                {
+                    Focal = It->DisplayAssumedFocalPx;
+                    Ratio = FString::Printf(TEXT("%.3f"), It->WristDistanceOverHandLength);
+                    break;
+                }
+        Notes.Add(FString::Printf(TEXT("Common space uses an assumed focal length of %.3f px; wrist distance / hand length: %s. Display only; uncalibrated. Source camera and actual hand positions remain unknown"), Focal, *Ratio));
+    }
+    else if (State.IsPerHandLocal())
     {
         Notes.Add(LOCTEXT("UnknownHandSpace", "The source camera parameters and relative hand positions are unknown. Review the separate left and right hand previews; they do not place both hands in a shared space").ToString());
     }

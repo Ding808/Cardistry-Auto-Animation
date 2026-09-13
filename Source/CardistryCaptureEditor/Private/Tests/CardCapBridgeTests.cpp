@@ -50,10 +50,17 @@ bool FCardCapStatusBoundaryTest::RunTest(const FString& Parameters)
     const FString LocalSuccess = Success.Replace(TEXT("\"scale_confidence\":\"low\""), TEXT("\"scale_confidence\":\"unknown\",\"coordinate_frame\":\"per_hand_wrist_local\""));
     TestTrue(TEXT("Local result coordinate frame retained"), FCardCapPythonBridge::ParseStatus(LocalSuccess, TEXT("test"), Snapshot, Error));
     TestTrue(TEXT("Local result cannot use combined raw animation viewer"), Snapshot.IsPerHandLocal());
+    const FString CommonDisplay = LocalSuccess.Replace(TEXT("\"scale_confidence\":\"unknown\""),
+        TEXT("\"scale_confidence\":\"unknown\",\"display_view_mode\":\"common_space\",\"display_assumed_focal_px\":1234.567891234"));
+    TestTrue(TEXT("A display-only common view parses independently from capture coordinates"), FCardCapPythonBridge::ParseStatus(CommonDisplay, TEXT("test"), Snapshot, Error));
+    TestTrue(TEXT("Common display is available"), Snapshot.HasCommonDisplay());
+    TestTrue(TEXT("Common display does not make the source animation globally positioned"), Snapshot.IsPerHandLocal());
+    TestEqual(TEXT("Display focal metadata retains double precision"), Snapshot.DisplayAssumedFocalPx, 1234.567891234);
     TestFalse(TEXT("Unknown coordinate frame rejected atomically"), FCardCapPythonBridge::ParseStatus(LocalSuccess.Replace(TEXT("per_hand_wrist_local"), TEXT("invented_joint_space")), TEXT("test"), Snapshot, Error));
     TestTrue(TEXT("Rejected frame keeps previous state"), Snapshot.IsPerHandLocal());
     TestTrue(TEXT("Legacy result remains supported"), FCardCapPythonBridge::ParseStatus(Success, TEXT("test"), Snapshot, Error));
     TestFalse(TEXT("Legacy missing field does not inherit local restriction"), Snapshot.IsPerHandLocal());
+    TestFalse(TEXT("Legacy missing display mode does not inherit a common display"), Snapshot.HasCommonDisplay());
     return true;
 }
 
@@ -106,7 +113,7 @@ bool FCardCapEnglishPanelTest::RunTest(const FString& Parameters)
         TEXT("Cardistry Capture"), TEXT("Source Video"), TEXT("Choose Video..."),
         TEXT("Start Processing"), TEXT("Cancel Processing"), TEXT("Results"),
         TEXT("Open Scene"), TEXT("Open Animation"), TEXT("Preview Video"),
-        TEXT("Result Folder"), TEXT("View Log"), TEXT("Advanced Settings"), TEXT("Ready")})
+        TEXT("Result Folder"), TEXT("View Log"), TEXT("Advanced Settings"), TEXT("Use Separate Local Preview"), TEXT("Ready")})
     {
         TestTrue(FString::Printf(TEXT("English panel label under zh-Hans: %s"), Expected), Labels.Contains(FString(Expected)));
     }

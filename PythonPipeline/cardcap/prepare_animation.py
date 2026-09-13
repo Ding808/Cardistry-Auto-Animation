@@ -20,6 +20,7 @@ from smplx.utils import Struct
 from smplx.vertex_ids import vertex_ids
 
 from . import __version__
+from .display_space import DisplayInputError, build_display_space, source_crop_diagnostics
 from .hand.mano_assets import load_mano_arrays
 from .hand.research_hands_glb import export_research_hands
 
@@ -144,10 +145,10 @@ def camera_configuration(view, observations=()):
                     "source_camera_evidence": camera,
                     "source_camera_evidence_is_legacy": legacy_evidence,
                     "current_container_metadata": metadata,
-                    "assumptions": ["Only per-hand wrist-local MANO shape and pose are available; relative hand placement and camera depth are unresolved.",
-                        "Any local viewing cameras are display_only and must not be reused for reconstruction or written into camera.intrinsics."],
+                    "assumptions": ["Source MANO shape and pose are wrist-local; relative hand placement and camera depth are unresolved.",
+                        "Any assumed common-space or local viewing cameras are display_only and must not be reused for reconstruction or written into camera.intrinsics."],
                     "independent_accuracy_verified": False},
-                "warnings": ["Camera K/D and inter-hand placement are unresolved. Preview shows each hand separately in local coordinates.",
+                "warnings": ["Camera K/D and inter-hand placement are unresolved. Conditional common-space and local previews are display-only hypotheses.",
                     "Container metadata status: " + (metadata["status"] if metadata else "unreadable") +
                     "; absence is limited to supported parsed fields. Historical camera warnings remain in source_camera_evidence only."],
                 "translation_method": "Not solved: no full-image camera evidence. Global translations and inter-hand placement are unknown."}
@@ -368,7 +369,7 @@ def export_cardcap(observations_path, output_dir, *, view_id=None, bone_mapping_
     geometry.scale_factor = scale["global_scale_factor_applied"]
     metric_valid = scale["meters_per_unit"] is not None
     units = "ue_centimeters" if metric_valid else "conditional_ue_units"
-    local_geometries, local_meshes = {}, {}
+    local_geometries, local_meshes, source_wrists = {}, {}, {}
     hands, per_side_validation, all_confidences, low_frames = [], {}, [], [item["frame"] for item in excluded]
     for side, samples in source_by_side.items():
         observed = {}
@@ -383,6 +384,8 @@ def export_cardcap(observations_path, output_dir, *, view_id=None, bone_mapping_
             side_matrices.append(np.asarray([cv2.Rodrigues(angle.astype(np.float64))[0] for angle in angles]))
         side_matrices = np.asarray(side_matrices)
         source_joints16, source_joints21 = geometry.evaluate(side_matrices, side)
+        source_wrists[side] = {frame: source_joints16[index, 0].copy()
+                               for index, frame in enumerate(ordered_frames)}
         for index, frame in enumerate(ordered_frames):
             hand, view_record = samples[frame]
             camera_translation = estimated_full_translation(hand, camera, side) * geometry.scale_factor if shared_camera else None
@@ -423,7 +426,8 @@ def export_cardcap(observations_path, output_dir, *, view_id=None, bone_mapping_
                 "fixed_shape_original_wrist_m": item.get("fixed_shape_original_wrist_m") if metric_valid else None,
                 "source_camera_translation_model_units": item.get("source_camera_translation_m") if not metric_valid else None,
                 "fixed_shape_original_wrist_model_units": item.get("fixed_shape_original_wrist_m") if not metric_valid else None,
-                "position_units": "meters" if metric_valid else "relative_model_units"}
+                "position_units": "meters" if metric_valid else "relative_model_units",
+                **source_crop_diagnostics(source_hand if measured else None)}
             output_frames.append({"frame": index, "confidence": score,
                 "sample_kind": "detected_model_observation" if measured else item["sample_kind"],
                 "validity": {"pose": True, "global_translation": shared_camera},
@@ -556,7 +560,7 @@ def export_cardcap(observations_path, output_dir, *, view_id=None, bone_mapping_
         "GLB UE top4 preview approximates skin weights and omits pose-corrective blend shapes; full-weight GLB/source arrays retained.",
     ]
     if not camera["calibrated"]:
-        warnings.append("Camera intrinsics and relative hand placement are unknown. Each hand is shown in its own wrist-local frame; local display cameras cannot be used for reconstruction.")
+        warnings.append("Camera intrinsics and relative hand placement are unknown. Source geometry remains wrist-local. The separate display configuration offers an assumed common space and optional local views; neither establishes source camera parameters or physical scale.")
     if excluded:
         warnings.append(f"Excluded {len(excluded)} unresolved same-side identity observations in {len(set(item['frame'] for item in excluded))} frames from animation; source detections unchanged. Missing animation samples remain zero-confidence fills, not recovered observations.")
     warnings.extend(camera.get("warnings", []))
@@ -596,6 +600,41 @@ def export_cardcap(observations_path, output_dir, *, view_id=None, bone_mapping_
     (output_dir / "joint_translation_report.json").write_text(json.dumps(joint_report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     capture_path = output_dir / "capture.cardcap.json"
     capture_path.write_text(json.dumps(capture, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
+    display_path = None
+    display_status = "not_required_calibrated_camera"
+    display_unavailable_reason = None
+    if not shared_camera:
+        try:
+            needs_legacy_crop_convention = any(
+                hand["diagnostics"].get("crop_weak_perspective_camera") is None and
+                hand["diagnostics"].get("crop_camera_translation_m") is not None and
+                (hand["diagnostics"].get("crop_focal_length_px") is None or
+                 hand["diagnostics"].get("crop_image_size_px") is None)
+                for samples in source_by_side.values() for hand, _ in samples.values())
+            legacy_convention = None
+            if needs_legacy_crop_convention:
+                try:
+                    legacy_convention = _legacy_crop_convention()
+                except (FileNotFoundError, KeyError, TypeError, ValueError, yaml.YAMLError) as error:
+                    raise DisplayInputError("The recorded model convention needed to decode cached crop cameras is unavailable or invalid") from error
+            display = build_display_space(source_by_side, source_wrists, frame_count, view["resolution"],
+                data["meta"]["fps"], scale["neutral_hand_measurement"]["length_source_units"] * geometry.scale_factor,
+                model_scale=geometry.scale_factor, legacy_crop_convention=legacy_convention)
+        except DisplayInputError as error:
+            display_status = "unavailable"
+            display_unavailable_reason = str(error)
+            unavailable = {"display_only": True, "status": display_status, "reason": display_unavailable_reason,
+                "capture_sha256": sha256(capture_path), "source_observations_sha256": source_hash,
+                "local_pose_export_available": True}
+            (output_dir / "display_space_unavailable.json").write_text(
+                json.dumps(unavailable, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        else:
+            display_status = "available"
+            display["capture_sha256"] = sha256(capture_path)
+            display["source_observations_sha256"] = source_hash
+            display["neutral_hand_length_definition"] = scale["neutral_hand_measurement"]["definition"]
+            display_path = output_dir / "display_space.json"
+            display_path.write_text(json.dumps(display, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
     # Repeated take/animation leaf names must not collide across source runs.
     research_dir = Path(research_output_dir or output_dir / "hand_mesh")
     glb = export_research_hands(bone_mapping_path=mapping_path, output_dir=research_dir, betas=shared_shape,
@@ -620,6 +659,9 @@ def export_cardcap(observations_path, output_dir, *, view_id=None, bone_mapping_
         "bone_mapping_sha256": sha256(mapping_path), "research_hands_manifest": glb["manifest_path"],
         "research_glb_outputs": glb["outputs"], "mean_reprojection_error_px": mean_reprojection,
         "joint_translation_report": str((output_dir/"joint_translation_report.json").resolve()),
-        "joint_wrist_distance_median_cm": joint_report["final_wrist_distance_median_cm"], "scale": scale}
+        "joint_wrist_distance_median_cm": joint_report["final_wrist_distance_median_cm"], "scale": scale,
+        "display_space_config": str(display_path.resolve()) if display_path else None,
+        "display_space_sha256": sha256(display_path) if display_path else None,
+        "display_space_status": display_status, "display_space_unavailable_reason": display_unavailable_reason}
     (output_dir / "validation.json").write_text(json.dumps(validation, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     return validation

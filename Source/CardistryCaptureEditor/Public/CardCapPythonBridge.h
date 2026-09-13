@@ -10,13 +10,15 @@ struct FCardCapJobOptions
     FString BoneMappingPath;
     bool bAllowBlurry = false;
     bool bRenderPreview = true;
+    bool bUseSeparateLocalPreview = false;
 };
 
 struct FCardCapJobSnapshot
 {
     FString JobId, Status = TEXT("idle"), Stage, Message, Error, LogPath;
     FString OutputDirectory, PreviewVideo, CaptureFile, MapAsset, SequenceAsset, AnimationAsset;
-    FString ScaleConfidence, IntrinsicsSource, CoordinateFrame;
+    FString ScaleConfidence, IntrinsicsSource, CoordinateFrame, DisplayViewMode;
+    double DisplayAssumedFocalPx = 0;
     // Retain old diagnostics for logs while presenting restored jobs in English.
     FString HistoricalError;
     bool bMessagesAreEnglish = false;
@@ -25,6 +27,7 @@ struct FCardCapJobSnapshot
     TArray<FIntPoint> LowConfidenceRanges;
     bool IsRunning() const { return Status == TEXT("running") || Status == TEXT("cancelling"); }
     bool IsPerHandLocal() const { return CoordinateFrame == TEXT("per_hand_wrist_local"); }
+    bool HasCommonDisplay() const { return DisplayViewMode == TEXT("common_space"); }
 };
 
 // One owner per editor module. Closing the tab does not destroy the job.

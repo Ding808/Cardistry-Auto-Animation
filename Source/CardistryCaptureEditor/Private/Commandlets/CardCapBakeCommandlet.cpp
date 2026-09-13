@@ -21,7 +21,7 @@ UCardCapBakeCommandlet::UCardCapBakeCommandlet()
     // -NullRHI still keeps ordinary bake/reload-only invocations headless.
     IsClient = true; IsServer = false; IsEditor = true;
     LogToConsole = true; ShowErrorCount = true;
-    HelpUsage = TEXT("-run=CardCapBake -Capture=<cardcap.json> -Mesh=<asset> -Animation=<new package> -Evidence=<json> [-Mapping=<json>] [-ValidateOnly] [-SequenceDirectory=<content path> -RenderDirectory=<new folder> -SequenceName=<name>]");
+    HelpUsage = TEXT("-run=CardCapBake -Capture=<cardcap.json> -Mesh=<asset> -Animation=<new package> -Evidence=<json> [-Mapping=<json>] [-ValidateOnly] [-SequenceDirectory=<content path> -RenderDirectory=<new folder> -SequenceName=<name> -DisplayConfig=<display_space.json>]");
 }
 
 int32 UCardCapBakeCommandlet::Main(const FString& Params)
@@ -91,6 +91,22 @@ int32 UCardCapBakeCommandlet::Main(const FString& Params)
             Settings.DistortionPolicy = Capture.Camera.bHasDistortion
                 ? TEXT("Ideal pinhole preview; supplied capture pixel-space distortion remains in the capture metadata")
                 : TEXT("Physical lens distortion is unknown; ideal pinhole preview is a declared rendering condition, not a measured zero-distortion lens");
+        }
+        FString DisplayConfig;
+        if (FParse::Value(*Params, TEXT("DisplayConfig="), DisplayConfig))
+        {
+            if (!bPerHandLocal || Capture.Camera.bHasIntrinsics
+                || !FCardCapDisplaySpaceData::Load(DisplayConfig, CaptureFile, Settings.FrameCount,
+                    Capture.Meta.Fps, Settings.Resolution, Settings.DisplaySpace, Error))
+            { UE_LOG(LogCardCapBake, Error, TEXT("Display-only common space requires unchanged local capture with null source intrinsics: %s"), *Error); return 6; }
+            Settings.bPerHandLocalPreview = false;
+            Settings.bAssumedCommonDisplay = true;
+            Settings.Fx = Settings.Fy = Settings.DisplaySpace.AssumedFocalPx;
+            Settings.Cx = Settings.DisplaySpace.PrincipalPoint.X;
+            Settings.Cy = Settings.DisplaySpace.PrincipalPoint.Y;
+            Settings.bCalibrated = false;
+            Settings.CameraSourceLabel = TEXT("display-only assumed focal length; uncalibrated; source intrinsics remain null");
+            Settings.CoordinateUnits = TEXT("conditional_ue_display_units");
         }
         FCardCapSequenceBuildResult Built;
         bool bRendered = FCardCapSequenceBuilder::Build(Mesh.Get(), Animation.Get(), Settings, Built, Error);

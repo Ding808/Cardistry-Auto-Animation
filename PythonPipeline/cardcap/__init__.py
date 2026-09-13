@@ -1,3 +1,3 @@
 """CardistryCapture offline video and hand-animation pipeline."""
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"

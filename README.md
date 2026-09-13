@@ -6,11 +6,17 @@
 
 Turn a video into editable hand animation and a review scene in Unreal Engine.
 
-**v0.0.2 targets Windows x64 / Unreal Engine 5.4; validation uses UE 5.4.4.** Results are animation drafts. Without reliable camera parameters, each hand is shown in its own local space. Relative hand placement, depth, and real-world scale remain unknown. Card reconstruction and physics simulation are not available.
+**v0.0.3 targets Windows x64 / Unreal Engine 5.4; validation uses UE 5.4.4.** Both hands now share the default review view. When camera parameters are unavailable, their placement uses an explicit, adjustable display focal assumption. This is an animation draft, not calibrated depth or real-world scale. Card reconstruction and physics simulation are not available.
 
 ### Demo preview
 
-**Source video → hand animation in Unreal Engine.** These examples show earlier noncommercial research using the same cardistry clip. Click either image to view it at full size.
+**v0.0.3: actual preview from a 97-frame cardistry video.** The three panes show the source, both hands together, and an independent overview. Press play below (3.23 seconds, 30 fps).
+
+https://github.com/user-attachments/assets/341e7a23-2cad-4fa9-822f-cd617d557334
+
+This run selected a **964.33 px display focal assumption**, with a median **wrist distance / hand length of 1.132**. **9/97 frames** exceed the declared geometry criteria and are marked for review. Camera intrinsics, distortion, physical scale, and source global translations remain unknown; these display ratios are not measurements.
+
+**Earlier visual examples** — click either image to view it at full size.
 
 <table>
   <tr>
@@ -23,13 +29,7 @@ Turn a video into editable hand animation and a review scene in Unreal Engine.
   </tr>
 </table>
 
-**Watch the matching comparison video** — 3.23 seconds · 97 frames · 30 fps. The source is on the left and the Unreal Engine hand reconstruction is on the right. Frames 61, 70, 87, and 96 match the hand-comparison image above.
-
-https://github.com/user-attachments/assets/9b5575d2-13fa-4fc8-bd88-d057ff2b1870
-
-You can also [open the video separately](https://github.com/user-attachments/assets/9b5575d2-13fa-4fc8-bd88-d057ff2b1870).
-
-The combined-hand view is an earlier experiment with unverified camera parameters and scale; v0.0.2 uses separate local hand views when camera parameters are unavailable. The card overlays are candidate masks, not verified card tracking or a released reconstruction feature. Original observation and interpolation labels are retained in the video.
+The images above are earlier noncommercial research examples from the same source clip. The hand image corresponds to [this earlier comparison video](https://github.com/user-attachments/assets/9b5575d2-13fa-4fc8-bd88-d057ff2b1870). The card overlays are experimental candidate masks, not verified card tracking or a released reconstruction feature. The current v0.0.3 output is the video at the start of this section; it retains observation and interpolation labels.
 
 MANO was used for hand animation courtesy of the Max Planck Institute for Intelligent Systems. See [model credits and license information](THIRD_PARTY_NOTICES.md).
 
@@ -37,7 +37,7 @@ MANO was used for hand animation courtesy of the Max Planck Institute for Intell
 
 #### 1. Install the plugin
 
-Download `CardistryCapture-v0.0.2.zip` from [Releases](https://github.com/Ding808/Cardistry-Auto-Animation/releases/tag/v0.0.2). Extract the `CardistryCapture` folder into your project:
+Download `CardistryCapture-v0.0.3.zip` from [Releases](https://github.com/Ding808/Cardistry-Auto-Animation/releases/tag/v0.0.3). Extract the `CardistryCapture` folder into your project:
 
 ```text
 YourProject/
@@ -72,7 +72,7 @@ MANO, WiLoR, and SMPL-X have licenses separate from the plugin code. This recons
 
 1. Open **Window → Cardistry Capture**.
 2. Click **Choose Video...**, select your video, then click **Start Processing**.
-3. After completion, use **Preview Video** to compare the source with the separate left and right hands, or **Open Scene** to play and scrub the timeline.
+3. After completion, use **Preview Video** to compare the source with both hands together and an independent overview, or **Open Scene** to play and scrub the timeline.
 
 Every job creates the hand meshes, skeleton, skin material, animation, review scene, cameras, and lighting. No separate scene template is needed. **Advanced Settings** are optional; start with the defaults. Use **Cancel Processing** to stop an active job.
 
@@ -82,13 +82,17 @@ Review yellow timeline ranges carefully. Observed, interpolated, and held poses 
 
 | Control | Purpose |
 | --- | --- |
-| **Open Scene** | Open the map and timeline at frame 0; local mode initially shows the left hand |
-| **Open Animation** | Open the animation asset; disabled in local mode |
-| **Preview Video** | Compare the source with each hand's separate local motion |
+| **Open Scene** | Open the map and timeline at frame 0, with both hands in the default common display |
+| **Open Animation** | Open a calibrated animation asset; disabled for uncalibrated takes whose shared placement belongs to the display scene |
+| **Preview Video** | Compare the source, both hands together, and an independent overview |
 | **Result Folder** | Find the preview, exchange data, and processing records |
 | **View Log** | Read failure details before correcting the issue and starting a new job |
 
-To view the right hand in a local scene, select the hand actor's skeletal mesh component and toggle **Local Hand Preview → Show right hand locally**. This changes the display only; it does not establish the hands' spatial relationship. **Open Animation** is disabled in local mode because a combined viewer would place two independent origins together. Use **Open Scene** or **Preview Video** instead.
+To adjust the common view, select **Common Space Preview (display only; uncalibrated)** in the scene Outliner. Under **Common Space Preview**, change **Assumed Focal Length (px)**; both hand placements, the viewing camera, and **Wrist Distance / Hand Length** update together at the current frame. This changes the display hypothesis, not the source pose or camera calibration. The saved scene retains the setting.
+
+For a closer look at fingers, enable **Show Local Hands**, then use **Show Right Local Hand** to choose the hand. To generate a three-column `source / left / right` video instead, enable **Advanced Settings → Use Separate Local Preview** before processing. It is optional and off by default.
+
+The automatic display focal is chosen per clip to minimize frame-by-frame violations of the stated hand-geometry criteria, with no image-width focal formula. The preview prints the assumed focal, wrist-distance ratio, and review status. Some frames can still fail those criteria and remain visible for inspection; passing the screen does not establish physical accuracy. **Open Animation** stays disabled for uncalibrated takes because the plain animation viewer does not apply the scene's display hypothesis. Use **Open Scene** instead.
 
 - Unreal assets: project content `CardistryCapture/Generated/<job-id>`.
 - Processing files: project `Saved/CardistryCapture/Runs/<job-id>`.
@@ -96,11 +100,11 @@ To view the right hand in a local scene, select the hand actor's skeletal mesh c
 
 Every job saves separate results. Closing the panel leaves processing running; closing Unreal Editor stops the job.
 
-### Upgrading from v0.0.1
+### Upgrading from v0.0.1 or v0.0.2
 
 Close Unreal Editor before updating. At the same plugin location, keep your own `.venv`, model files, and local runtime cache; update `Source`, `Config`, `Scripts`, the Python code and release manifests, the plugin descriptor, and documentation. Rebuild **Development Editor / Win64**, then run `Scripts/Setup.cmd` to complete the version's readiness check. Do not replace your environment with someone else's `.venv`.
 
-For a simpler clean installation, extract v0.0.2 into a new location and run setup with your licensed model files before processing. A new location needs its own environment preparation.
+For a simpler clean installation, extract v0.0.3 into a new location and run setup with your licensed model files before processing. A new location needs its own environment preparation.
 
 ### Troubleshooting
 
@@ -108,9 +112,9 @@ For a simpler clean installation, extract v0.0.2 into a new location and run set
 
 **Missing Python or models?** Run `Scripts/Setup.cmd` from the installed plugin and complete its readiness check. Do not copy another computer's `.venv`. Recreate the environment after moving the plugin.
 
-**Slow dependency download?** Download `CardistryCapture-RuntimeDeps-v0.0.2.zip` from the same release and provide it as a local archive. Other dependencies still need an internet connection. See [setup options](Scripts/README.md#english).
+**Slow dependency download?** Download `CardistryCapture-RuntimeDeps-v0.0.3.zip` from the same release and provide it as a local archive. Other dependencies still need an internet connection. See [setup options](Scripts/README.md#english).
 
-**Motion does not match the video?** Occlusion, hand identity, and finger pose errors remain possible. Use clear, evenly lit footage with both hands in view, and check the source labels for filled frames. The v0.0.2 language update does not improve reconstruction accuracy.
+**Motion does not match the video?** Occlusion, hand identity, and finger pose errors remain possible. Use clear, evenly lit footage with both hands in view, and check the source labels for filled frames. The common view is a display hypothesis; changing its focal does not recover missing observations or verify pose accuracy.
 
 ### Building and licensing
 
@@ -122,13 +126,15 @@ The plugin's own code is covered by [LICENSE](LICENSE). Third-party code, detect
 
 在 Unreal Engine 中选择一段视频，生成可编辑的手部动画和配套查看场景。
 
-**v0.0.2 面向 Windows x64 / Unreal Engine 5.4，验证环境为 UE 5.4.4。** 当前输出是动作初稿：缺少可靠相机参数时，左右手分别显示局部动作，双手相对位置、深度和真实尺度保持未知。扑克牌重建和物理模拟尚未提供。
+**v0.0.3 面向 Windows x64 / Unreal Engine 5.4，验证环境为 UE 5.4.4。** 默认查看画面恢复双手同框。缺少相机参数时，使用明确标注、可调整的显示焦距假设安排双手位置；这是动作初稿，不代表已标定的深度或真实尺度。扑克牌重建和物理模拟尚未提供。
 
 ### 演示预览
 
-前面的[演示区](#demo-preview)包含两张可点击放大的图片：原视频与 UE 手部重建的逐帧对照，以及实验性的牌面候选掩膜。配套[对比视频](https://github.com/user-attachments/assets/9b5575d2-13fa-4fc8-bd88-d057ff2b1870)为同一段素材的完整 97 帧，共 3.23 秒、30 fps；左侧为原视频，右侧为 UE 重建，手部对照图对应其中第 61、70、87、96 帧。
+前面的[演示区](#demo-preview)首先展示 **v0.0.3 的实际输出视频**：完整 97 帧，共 3.23 秒、30 fps，三栏依次为“原视频 / 双手同框 / 独立总览”。也可[单独打开视频](https://github.com/user-attachments/assets/341e7a23-2cad-4fa9-822f-cd617d557334)。
 
-这些是早期非商业研究演示：合并双手画面的相机参数和尺度尚未验证，v0.0.2 在缺少相机参数时显示各自的局部动作。牌面覆盖图只表示候选掩膜，不代表已验证的扑克牌追踪或已发布的重建功能。视频保留原有检测与插值状态标注。
+本次自动选择的**显示焦距假设为 964.33 px**，**腕距/手长比中位数为 1.132**；**9/97 帧**超出所列几何门槛，已标记供复核。真实相机内参、畸变、物理尺度与源全局平移仍保持未知；这些显示比值不是测量结果。
+
+同一区域还保留了两张可点击放大的早期研究图片：原片与手部重建逐帧对照、实验性的牌面候选掩膜。手部图片对应[早期对比视频](https://github.com/user-attachments/assets/9b5575d2-13fa-4fc8-bd88-d057ff2b1870)，不是本次 v0.0.3 画面；牌面候选图也不代表已发布的扑克牌重建功能。新版视频保留检测、插值等来源标注。
 
 手部动画使用 MANO，鸣谢 Max Planck Institute for Intelligent Systems。模型署名和许可见[第三方资源说明](THIRD_PARTY_NOTICES.md)。
 
@@ -136,7 +142,7 @@ The plugin's own code is covered by [LICENSE](LICENSE). Third-party code, detect
 
 #### 1. 安装插件
 
-从 [Releases](https://github.com/Ding808/Cardistry-Auto-Animation/releases/tag/v0.0.2) 下载 `CardistryCapture-v0.0.2.zip`，解压得到 `CardistryCapture` 文件夹，将整个文件夹放入工程：
+从 [Releases](https://github.com/Ding808/Cardistry-Auto-Animation/releases/tag/v0.0.3) 下载 `CardistryCapture-v0.0.3.zip`，解压得到 `CardistryCapture` 文件夹，将整个文件夹放入工程：
 
 ```text
 你的工程/
@@ -171,7 +177,7 @@ MANO、WiLoR、SMPL-X 的许可与插件代码许可分开，当前重建组合�
 
 1. 在 **Window → Cardistry Capture** 打开面板。
 2. 点击 **Choose Video...** 选择视频，然后点击 **Start Processing** 开始处理。
-3. 完成后点击 **Preview Video** 对照“原视频 / 左手 / 右手”，或点击 **Open Scene** 打开场景，播放、拖动时间线。
+3. 完成后点击 **Preview Video** 对照“原视频 / 双手同框 / 独立总览”，或点击 **Open Scene** 打开场景，播放、拖动时间线。
 
 每次任务自动生成手部网格、骨架、肤色材质、动画、查看场景、相机和照明，不需要另找场景模板。**Advanced Settings** 为可选高级设置，初次使用可保持默认。处理过程中可点击 **Cancel Processing** 取消任务。
 
@@ -181,13 +187,17 @@ MANO、WiLoR、SMPL-X 的许可与插件代码许可分开，当前重建组合�
 
 | 界面按钮 | 用途 |
 | --- | --- |
-| **Open Scene** | 打开地图和时间线，定位第 0 帧；局部模式默认显示左手 |
-| **Open Animation** | 打开动画资产；局部模式下停用 |
-| **Preview Video** | 对照原视频与两只手各自的局部动作 |
+| **Open Scene** | 打开地图和时间线，定位第 0 帧，默认显示共同空间中的双手 |
+| **Open Animation** | 打开已标定的动画资产；未标定任务的共同位置属于显示场景，因此此按钮停用 |
+| **Preview Video** | 对照原视频、双手同框与独立总览 |
 | **Result Folder** | 查看本次预览、交换数据和处理记录 |
 | **View Log** | 查看失败原因，修正后重新处理 |
 
-局部场景中切换右手：选中手部 actor 的骨骼网格组件，在 **Local Hand Preview → Show right hand locally** 切换。此操作只改变显示，不确定双手空间关系。局部模式下 **Open Animation** 按钮停用，因为普通动画查看器会把两个独立原点放在一起；请使用 **Open Scene** 或 **Preview Video**。
+调整共同视图：在场景 Outliner 选择 **Common Space Preview (display only; uncalibrated)**。在 **Common Space Preview** 分类修改 **Assumed Focal Length (px)**，当前帧的双手位置、查看相机和 **Wrist Distance / Hand Length** 会同步更新。这里只改变显示假设，不修改源姿态或相机标定；保存场景可保留设置。
+
+要仔细看手指，启用 **Show Local Hands**，再用 **Show Right Local Hand** 切换左右手。要生成“原视频 / 左手 / 右手”三栏视频，可在处理前勾选 **Advanced Settings → Use Separate Local Preview**；此项默认关闭，无需填写任何新增必填参数。
+
+自动显示焦距按本段素材逐帧几何门槛的越界数量选择，不采用与画幅宽度成正比的焦距公式。预览会标出假设焦距、腕距与手长之比、复核状态。越界帧仍保留供检查；通过筛查也不代表物理准确。未标定任务的 **Open Animation** 仍停用，因为普通动画查看器不应用场景的显示假设；请使用 **Open Scene**。
 
 - UE 资源：工程内容 `CardistryCapture/Generated/<任务编号>`。
 - 处理文件：工程 `Saved/CardistryCapture/Runs/<任务编号>`。
@@ -195,11 +205,11 @@ MANO、WiLoR、SMPL-X 的许可与插件代码许可分开，当前重建组合�
 
 每次处理保存独立结果。关闭面板不会中断任务；关闭整个编辑器会停止任务。
 
-### 从 v0.0.1 升级
+### 从 v0.0.1 或 v0.0.2 升级
 
 更新前关闭 Unreal Editor。同一插件位置升级时，可保留自己已有的 `.venv`、模型文件和本地运行库缓存；更新 `Source`、`Config`、`Scripts`、Python 代码和发行清单、插件描述文件及文档。重新编译 **Development Editor / Win64**，再运行 `Scripts/Setup.cmd` 完成本版本的就绪检查。不要用他人的 `.venv` 覆盖自己的环境。
 
-更简单的干净安装方式：将 v0.0.2 解压到新位置，在处理视频前运行安装器并提供自己获许可的模型文件。新位置需要单独准备运行环境。
+更简单的干净安装方式：将 v0.0.3 解压到新位置，在处理视频前运行安装器并提供自己获许可的模型文件。新位置需要单独准备运行环境。
 
 ### 常见问题
 
@@ -207,9 +217,9 @@ MANO、WiLoR、SMPL-X 的许可与插件代码许可分开，当前重建组合�
 
 **提示缺少 Python 或模型？** 在插件所在位置重新运行 `Scripts/Setup.cmd`，完成最后的就绪检查。不要复制其他电脑的 `.venv`；移动插件后也应重建环境。
 
-**首次依赖下载较慢？** 可从同一 Release 下载 `CardistryCapture-RuntimeDeps-v0.0.2.zip`，安装时指定本地包。其余依赖仍需联网下载。详见 [安装参数](Scripts/README.md#简体中文)。
+**首次依赖下载较慢？** 可从同一 Release 下载 `CardistryCapture-RuntimeDeps-v0.0.3.zip`，安装时指定本地包。其余依赖仍需联网下载。详见 [安装参数](Scripts/README.md#简体中文)。
 
-**结果不贴合原片？** 当前仍可能出现遮挡、左右手身份和手指姿态错误。优先使用清晰、光线均匀、双手持续入镜的视频，并对照来源标签检查补帧。v0.0.2 的语言更新不提高重建精度。
+**结果不贴合原片？** 当前仍可能出现遮挡、左右手身份和手指姿态错误。优先使用清晰、光线均匀、双手持续入镜的视频，并对照来源标签检查补帧。共同视图属于显示假设；调整焦距不会补回缺失观测，也不能验证姿态准确度。
 
 ### 编译与许可
 

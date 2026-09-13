@@ -41,6 +41,8 @@ class LocalWorkerFixture(Fixture):
     """Fake UE orchestration with real PNGs; MP4 generation intentionally off."""
     def __init__(self, directory, *, tiny_side=None):
         super().__init__(directory, render=False)
+        self.request['display_view_mode'] = 'per_hand_local'
+        write_json(self.root / 'request.json', self.request)
         self.tiny_side = tiny_side
 
     def capture(self):
@@ -236,6 +238,8 @@ class LocalPosePreviewTests(unittest.TestCase):
         import cv2
         import numpy as np
         fixture = Fixture(Path(temporary))
+        fixture.request['display_view_mode'] = 'per_hand_local'
+        write_json(fixture.root / 'request.json', fixture.request)
         source = cv2.VideoWriter(str(fixture.video), cv2.VideoWriter_fourcc(*'mp4v'), 30, (64, 48))
         self.assertTrue(source.isOpened())
         for i in range(3):

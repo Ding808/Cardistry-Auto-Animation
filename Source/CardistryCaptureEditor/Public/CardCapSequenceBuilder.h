@@ -5,6 +5,7 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "CardCapDisplaySpace.h"
 #include "CardCapSequenceBuilder.generated.h"
 
 class UAnimSequence;
@@ -76,6 +77,8 @@ struct CARDISTRYCAPTUREEDITOR_API FCardCapSequenceBuildSettings
     FString CoordinateUnits = TEXT("ue_centimeters");
     FString DistortionPolicy;
     bool bPerHandLocalPreview = false;
+    bool bAssumedCommonDisplay = false;
+    FCardCapDisplaySpaceData DisplaySpace;
     FName LeftWristBone, RightWristBone;
     // Camera-local UE +X forward, +Y image-right, +Z image-up; units cm.
     // The exported capture already uses this basis, so both default to identity.
@@ -89,10 +92,13 @@ struct CARDISTRYCAPTUREEDITOR_API FCardCapSequenceBuildResult
     UWorld* World = nullptr;
     ULevelSequence* Sequence = nullptr;
     ACardCapResearchHandsActor* HandsActor = nullptr;
+    ACardCapResearchHandsActor* RightDisplayActor = nullptr;
+    ACardCapDisplaySpaceActor* DisplayController = nullptr;
     ACardCapResearchCameraActor* CameraActor = nullptr;
     ACameraActor* OverviewCameraActor = nullptr;
     ALevelSequenceActor* SequenceActor = nullptr;
     FGuid HandsBinding;
+    FGuid RightHandsBinding;
     FGuid CameraBinding;
     FString MapPackageName;
     FString SequencePackageName;

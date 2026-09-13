@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "release": "v0.0.2",
-  "archive_url": "https://github.com/Ding808/Cardistry-Auto-Animation/releases/download/v0.0.2/CardistryCapture-RuntimeDeps-v0.0.2.zip",
+  "release": "v0.0.3",
+  "archive_url": "https://github.com/Ding808/Cardistry-Auto-Animation/releases/download/v0.0.3/CardistryCapture-RuntimeDeps-v0.0.3.zip",
   "archive_sha256": "0525b488ff9fc714318995a4723fe075aac6bed64c4b13d7956cf117c94b2ab1",
   "wheels": [
     {"file": "numpy-1.26.4-1release-cp310-cp310-win_amd64.whl", "package": "numpy", "version": "1.26.4", "sha256": "ae762161f74bd10619bf3dd4707053b68ecb1c6233a4b5b7e281027ee186c835"},

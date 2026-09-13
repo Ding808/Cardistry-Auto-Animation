@@ -116,6 +116,7 @@ bool FCardCapPythonBridge::Start(const FCardCapJobOptions& Options, FString& Out
     Request->SetStringField(TEXT("bone_mapping_path"), Mapping);
     Request->SetBoolField(TEXT("allow_blurry"), Options.bAllowBlurry);
     Request->SetBoolField(TEXT("render_preview"), Options.bRenderPreview);
+    Request->SetStringField(TEXT("display_view_mode"), Options.bUseSeparateLocalPreview ? TEXT("per_hand_local") : TEXT("common_space"));
     const FString RequestFile = Snapshot.OutputDirectory / TEXT("request.json");
     if (!WriteJson(RequestFile, Request))
     { OutError = TEXT("The processing settings could not be saved."); Fail(OutError); return false; }
@@ -175,6 +176,10 @@ bool FCardCapPythonBridge::ParseStatus(const FString& Json, const FString& Expec
         (*Result)->TryGetStringField(TEXT("preview_video"), Next.PreviewVideo);
         (*Result)->TryGetStringField(TEXT("scale_confidence"), Next.ScaleConfidence);
         (*Result)->TryGetStringField(TEXT("intrinsics_source"), Next.IntrinsicsSource);
+        Next.DisplayViewMode.Empty();
+        Next.DisplayAssumedFocalPx = 0;
+        (*Result)->TryGetStringField(TEXT("display_view_mode"), Next.DisplayViewMode);
+        FiniteNumber(*Result, TEXT("display_assumed_focal_px"), Next.DisplayAssumedFocalPx);
         Next.CoordinateFrame.Empty(); // Absent on legacy jobs; never inherit a prior local result.
         if ((*Result)->HasField(TEXT("coordinate_frame")) &&
             (!(*Result)->TryGetStringField(TEXT("coordinate_frame"), Next.CoordinateFrame) ||
@@ -401,7 +406,8 @@ void FCardCapPythonBridge::SeekOpenedSequence()
     UWorld* World = GEditor->GetEditorWorldContext().World();
     if (!World) return;
     ACameraActor* DisplayCamera = nullptr;
-    const FString CameraPrefix = Snapshot.IsPerHandLocal() ? TEXT("Left local viewer") : TEXT("Capture camera");
+    const FString CameraPrefix = Snapshot.HasCommonDisplay() ? TEXT("Common display camera")
+        : (Snapshot.IsPerHandLocal() ? TEXT("Left local viewer") : TEXT("Capture camera"));
     for (TActorIterator<ACameraActor> It(World); It; ++It)
     {
         if (It->GetActorLabel().StartsWith(CameraPrefix)) { DisplayCamera = *It; break; }
@@ -445,7 +451,7 @@ void FCardCapPythonBridge::OpenResultAnimation()
 {
     if (Snapshot.Status != TEXT("succeeded") || !GEditor) return;
     if (Snapshot.IsPerHandLocal())
-    { Snapshot.Error = TEXT("The relative hand positions are unknown. Review the separate left and right hand previews."); return; }
+    { Snapshot.Error = TEXT("The source animation contains separate local hand poses. Choose Open Scene to review the display, including common-space assumptions when available."); return; }
     RefreshResultAssets();
     GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(Snapshot.AnimationAsset);
 }

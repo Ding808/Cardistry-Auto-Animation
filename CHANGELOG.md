@@ -4,6 +4,14 @@
 
 ## English
 
+### v0.0.3
+
+- Restore a common display of both hands as the default review, with a source comparison and independent overview.
+- Choose a display focal assumption per clip from frame-by-frame hand-geometry checks, independently of image orientation; report failures rather than hide them.
+- Keep camera intrinsics, distortion, metric scale, and global translation unknown when uncalibrated. Store display assumptions separately from capture data.
+- Allow the assumed focal and local-hand view to be adjusted in the saved review scene; retain the optional separate-hand video layout.
+- Preserve native crop-camera diagnostics and observation/interpolation labels.
+
 ### v0.0.2
 
 - Use English by default for the capture panel, controls, and processing messages.
@@ -24,6 +32,14 @@
 Validated environment: Windows x64, Unreal Engine 5.4.4, Python 3.10, and NVIDIA CUDA. Card reconstruction, physics simulation, and accurate shared-space reconstruction of both hands were not delivered in v0.0.1 and remain unavailable in v0.0.2.
 
 ## 简体中文
+
+### v0.0.3
+
+- 默认恢复双手共同显示，提供原视频对照与独立总览。
+- 根据每段素材的逐帧手部几何检查选择显示焦距假设，不依赖画幅方向，并如实标出越界帧。
+- 未标定时，相机内参、畸变、米制尺度与全局平移继续保持未知；显示假设单独保存。
+- 在保存后的查看场景中调整假设焦距、切换单手查看，并保留可选的左右手分栏视频。
+- 保留原生裁切相机诊断值与检测、插值等来源标注。
 
 ### v0.0.2
 

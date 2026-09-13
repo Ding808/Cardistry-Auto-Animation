@@ -43,11 +43,13 @@
 #include "SceneInterface.h"
 #include "ShaderCompiler.h"
 #include "Sections/MovieSceneCameraCutSection.h"
+#include "Sections/MovieSceneFloatSection.h"
 #include "Sections/MovieSceneSkeletalAnimationSection.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "TextureResource.h"
 #include "Tracks/MovieSceneCameraCutTrack.h"
+#include "Tracks/MovieSceneFloatTrack.h"
 #include "Tracks/MovieSceneSkeletalAnimationTrack.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
@@ -365,7 +367,7 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     }
 
     FAssetCompilingManager::Get().FinishAllCompilation();
-    if (S.bPerHandLocalPreview)
+    if (S.bPerHandLocalPreview || S.bAssumedCommonDisplay)
     {
         TSet<int32> LeftSections, RightSections;
         if (!ClassifyHandSections(Mesh, S.LeftWristBone, S.RightWristBone, Out.LeftMaterialIds, Out.RightMaterialIds, LeftSections, RightSections, Error) ||
@@ -373,6 +375,16 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
             !AnimatedGeometryBounds(Mesh, Animation, S, Out.RightLocalBounds, Out.RightGeometryVerticesPerFrame, Error, &RightSections))
             return Fail(Error, Error.IsEmpty() ? TEXT("Invalid separate local-hand bounds.") : Error);
         Out.GeometryVerticesPerFrame = Out.LeftGeometryVerticesPerFrame + Out.RightGeometryVerticesPerFrame;
+        if (S.bAssumedCommonDisplay)
+        {
+            if (S.DisplaySpace.LeftConstant.Num() != S.FrameCount || S.DisplaySpace.RightConstant.Num() != S.FrameCount)
+                return Fail(Error, TEXT("Common display needs an explicit display configuration for every frame."));
+            for (int32 Frame = 0; Frame < S.FrameCount; ++Frame)
+            {
+                Out.AnimatedGeometryBounds += Out.LeftLocalBounds.ShiftBy(S.DisplaySpace.LeftConstant[Frame] + S.Fx * S.DisplaySpace.LeftPerFocal[Frame]);
+                Out.AnimatedGeometryBounds += Out.RightLocalBounds.ShiftBy(S.DisplaySpace.RightConstant[Frame] + S.Fx * S.DisplaySpace.RightPerFocal[Frame]);
+            }
+        }
     }
     else if (!AnimatedGeometryBounds(Mesh, Animation, S, Out.AnimatedGeometryBounds, Out.GeometryVerticesPerFrame, Error))
         return Fail(Error, Error.IsEmpty() ? TEXT("Invalid animated geometry bounds.") : Error);
@@ -387,6 +399,7 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     Out.HandsActor = Out.World->SpawnActor<ACardCapResearchHandsActor>();
     Out.HandsActor->SetActorLabel(S.bPerHandLocalPreview
         ? TEXT("Local hand pose viewer (one side at a time; relative hand space unknown)") : TEXT("Captured hands (MANO research asset)"));
+    if (S.bAssumedCommonDisplay) Out.HandsActor->SetActorLabel(TEXT("Left hand (display only; assumed common space)"));
     Out.HandsActor->SetActorTransform(S.MeshTransform);
     auto* MeshComponent = CastChecked<UCardCapResearchSkeletalMeshComponent>(Out.HandsActor->GetSkeletalMeshComponent());
     MeshComponent->SetMobility(EComponentMobility::Movable);
@@ -398,10 +411,10 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     MeshComponent->SetCastShadow(false);
     if (!MeshComponent->GetRelativeTransform().Equals(FTransform::Identity) || MeshComponent->GetNumMaterials() < 1)
         return Fail(Error, TEXT("Research hand component requires identity transform and actual material slots."));
-    UMaterial* SkinMaterial = CreateSkinMaterial(Out.SkinMaterialPackageName, S.bPerHandLocalPreview);
+    UMaterial* SkinMaterial = CreateSkinMaterial(Out.SkinMaterialPackageName, S.bPerHandLocalPreview || S.bAssumedCommonDisplay);
     for (int32 Slot = 0; Slot < MeshComponent->GetNumMaterials(); ++Slot)
         MeshComponent->SetMaterial(Slot, SkinMaterial);
-    if (S.bPerHandLocalPreview)
+    if (S.bPerHandLocalPreview || S.bAssumedCommonDisplay)
     {
         MeshComponent->bSeparateLocalHands = true;
         MeshComponent->LocalLeftMaterialIds = Out.LeftMaterialIds;
@@ -419,11 +432,33 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
             (BindJoints[Index].GetTranslation() - BindBounds.Origin).Length() + BindBounds.SphereRadius);
     }
 
+    if (S.bAssumedCommonDisplay)
+    {
+        Out.RightDisplayActor = Out.World->SpawnActor<ACardCapResearchHandsActor>();
+        Out.RightDisplayActor->SetActorLabel(TEXT("Right hand (display only; assumed common space)"));
+        auto* Right = CastChecked<UCardCapResearchSkeletalMeshComponent>(Out.RightDisplayActor->GetSkeletalMeshComponent());
+        Right->SetMobility(EComponentMobility::Movable);
+        Right->SetSkeletalMesh(Mesh);
+        Right->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Right->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+        Right->bEnableUpdateRateOptimizations = false;
+        Right->bComponentUseFixedSkelBounds = false;
+        Right->SetCastShadow(false);
+        Right->BindVertexToBoneRadiusCm = MeshComponent->BindVertexToBoneRadiusCm;
+        Right->bSeparateLocalHands = true;
+        Right->LocalLeftMaterialIds = Out.LeftMaterialIds;
+        Right->LocalRightMaterialIds = Out.RightMaterialIds;
+        for (int32 Slot = 0; Slot < Right->GetNumMaterials(); ++Slot) Right->SetMaterial(Slot, SkinMaterial);
+        Right->SetLocalHandView(true);
+    }
+
     Out.CameraActor = Out.World->SpawnActor<ACardCapResearchCameraActor>();
     const FString SourceLabel = S.CameraSourceLabel.IsEmpty()
         ? (S.bCalibrated ? TEXT("calibrated") : TEXT("prior-based, uncalibrated")) : S.CameraSourceLabel;
-    const FString CameraLabel = S.bPerHandLocalPreview ? TEXT("Left local viewer (display_only; no source camera)")
-        : TEXT("Capture camera (") + SourceLabel + TEXT(")");
+    const FString CameraLabel = S.bAssumedCommonDisplay
+        ? FString::Printf(TEXT("Common display camera (assumed %.3f px; display only; uncalibrated)"), S.Fx)
+        : (S.bPerHandLocalPreview ? TEXT("Left local viewer (display_only; no source camera)")
+        : TEXT("Capture camera (") + SourceLabel + TEXT(")"));
     Out.CameraActor->SetActorLabel(CameraLabel);
     Out.CameraActor->SetActorTransform(S.CameraTransform);
     auto* Camera = CastChecked<UCardCapResearchCameraComponent>(Out.CameraActor->GetCameraComponent());
@@ -439,6 +474,7 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     Out.OverviewCameraActor = Out.World->SpawnActor<ACameraActor>();
     Out.OverviewCameraActor->SetActorLabel(S.bPerHandLocalPreview
         ? TEXT("Right local viewer (display_only; no inter-hand spatial relation)") : TEXT("Overview camera (independent three-quarter perspective, geometry framing)"));
+    if (S.bAssumedCommonDisplay) Out.OverviewCameraActor->SetActorLabel(TEXT("Common overview camera (display only; uncalibrated)"));
     UCameraComponent* Overview = Out.OverviewCameraActor->GetCameraComponent();
     Overview->SetFieldOfView(60.0f);
     Overview->SetAspectRatio(double(S.Resolution.X) / S.Resolution.Y);
@@ -453,6 +489,18 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     const FVector OverviewLocation = Center + FVector(-1.0, -1.0, 0.65).GetSafeNormal() * Distance;
     Out.OverviewCameraActor->SetActorLocation(OverviewLocation);
     Out.OverviewCameraActor->SetActorRotation(FRotationMatrix::MakeFromX(Center - OverviewLocation).Rotator());
+    if (S.bAssumedCommonDisplay)
+    {
+        Out.DisplayController = Out.World->SpawnActor<ACardCapDisplaySpaceActor>();
+        Out.DisplayController->SetActorLabel(TEXT("Common Space Preview (display only; uncalibrated)"));
+        Out.DisplayController->LeftHand = Out.HandsActor;
+        Out.DisplayController->RightHand = Out.RightDisplayActor;
+        Out.DisplayController->DisplayCamera = Out.CameraActor;
+        Out.DisplayController->OverviewCamera = Out.OverviewCameraActor;
+        Out.DisplayController->LeftBounds = Out.LeftLocalBounds;
+        Out.DisplayController->RightBounds = Out.RightLocalBounds;
+        Out.DisplayController->Configure(S.DisplaySpace);
+    }
     auto* Light = Out.World->SpawnActor<ADirectionalLight>();
     Light->SetActorLabel(TEXT("Research key light (single directional)"));
     Light->SetActorRotation(FRotator(-35, -25, 0));
@@ -468,8 +516,9 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     Scene->SetTickResolutionDirectly(TickRate);
     Scene->SetDisplayRate(S.DisplayRate);
     Scene->SetPlaybackRange(0, S.FrameCount * 1000);
-    Out.HandsBinding = Scene->AddPossessable(S.bPerHandLocalPreview
-        ? TEXT("Separate local hand poses (display_only; spatial relation unknown)") : TEXT("Captured dual hands"), Out.HandsActor->GetClass());
+    Out.HandsBinding = Scene->AddPossessable(S.bAssumedCommonDisplay
+        ? TEXT("Left hand local animation (display placement only)") : (S.bPerHandLocalPreview
+        ? TEXT("Separate local hand poses (display_only; spatial relation unknown)") : TEXT("Captured dual hands")), Out.HandsActor->GetClass());
     Out.Sequence->BindPossessableObject(Out.HandsBinding, *Out.HandsActor, Out.World);
     auto* AnimTrack = Scene->AddTrack<UMovieSceneSkeletalAnimationTrack>(Out.HandsBinding);
     AnimTrack->bBlendFirstChildOfRoot = false;
@@ -477,6 +526,26 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     Section->Params.bForceCustomMode = true;
     Section->Params.bSkipAnimNotifiers = true;
     Section->SetRange(TRange<FFrameNumber>(0, S.FrameCount * 1000));
+    if (S.bAssumedCommonDisplay)
+    {
+        Out.RightHandsBinding = Scene->AddPossessable(TEXT("Right hand local animation (display placement only)"), Out.RightDisplayActor->GetClass());
+        Out.Sequence->BindPossessableObject(Out.RightHandsBinding, *Out.RightDisplayActor, Out.World);
+        auto* RightTrack = Scene->AddTrack<UMovieSceneSkeletalAnimationTrack>(Out.RightHandsBinding);
+        RightTrack->bBlendFirstChildOfRoot = false;
+        auto* RightSection = CastChecked<UMovieSceneSkeletalAnimationSection>(RightTrack->AddNewAnimation(0, Animation));
+        RightSection->Params.bForceCustomMode = true;
+        RightSection->Params.bSkipAnimNotifiers = true;
+        RightSection->SetRange(TRange<FFrameNumber>(0, S.FrameCount * 1000));
+        const FGuid DisplayBinding = Scene->AddPossessable(TEXT("Display-only frame and focal assumptions (uncalibrated)"), Out.DisplayController->GetClass());
+        Out.Sequence->BindPossessableObject(DisplayBinding, *Out.DisplayController, Out.World);
+        auto* FrameTrack = Scene->AddTrack<UMovieSceneFloatTrack>(DisplayBinding);
+        FrameTrack->SetPropertyNameAndPath(TEXT("DisplayFrame"), TEXT("DisplayFrame"));
+        auto* FrameSection = CastChecked<UMovieSceneFloatSection>(FrameTrack->CreateNewSection());
+        FrameSection->SetRange(TRange<FFrameNumber>(0, S.FrameCount * 1000));
+        FrameSection->GetChannel().AddLinearKey(0, 0.f);
+        FrameSection->GetChannel().AddLinearKey(S.FrameCount * 1000, static_cast<float>(S.FrameCount));
+        FrameTrack->AddSection(*FrameSection);
+    }
     Out.CameraBinding = Scene->AddPossessable(CameraLabel, Out.CameraActor->GetClass());
     Out.Sequence->BindPossessableObject(Out.CameraBinding, *Out.CameraActor, Out.World);
     auto* CutTrack = CastChecked<UMovieSceneCameraCutTrack>(Scene->AddCameraCutTrack(UMovieSceneCameraCutTrack::StaticClass()));
@@ -484,6 +553,7 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     Cut->SetRange(TRange<FFrameNumber>(0, S.FrameCount * 1000));
     Out.SequenceActor = Out.World->SpawnActor<ALevelSequenceActor>();
     Out.SequenceActor->SetActorLabel(S.bPerHandLocalPreview ? TEXT("Local pose sequence; no reconstructed two-hand space") : TEXT("Cardistry captured hand sequence"));
+    if (S.bAssumedCommonDisplay) Out.SequenceActor->SetActorLabel(TEXT("Common display sequence (assumed focal; uncalibrated)"));
     Out.SequenceActor->SetSequence(Out.Sequence);
     Out.World->UpdateWorldComponents(true, false);
     FAssetRegistryModule::AssetCreated(Out.Sequence);
@@ -507,6 +577,7 @@ bool FCardCapSequenceBuilder::Build(USkeletalMesh* Mesh, UAnimSequence* Animatio
     // The initial proxy may already have cached a fallback while the material
     // was compiling. Recreate it after shader completion, not just pose data.
     MeshComponent->MarkRenderStateDirty();
+    if (Out.RightDisplayActor) Out.RightDisplayActor->GetSkeletalMeshComponent()->MarkRenderStateDirty();
     Out.World->SendAllEndOfFrameUpdates();
     FlushRenderingCommands();
     const FString SkinFilename = FPackageName::LongPackageNameToFilename(Out.SkinMaterialPackageName, FPackageName::GetAssetPackageExtension());
@@ -679,11 +750,43 @@ bool FCardCapSequenceBuilder::CaptureFrames(const FCardCapSequenceBuildResult& B
         Mesh->UpdateBounds();
         Mesh->MarkRenderTransformDirty();
         Mesh->MarkRenderDynamicDataDirty();
-        if (!Built.HandsActor->GetActorTransform().Equals(FTransform::Identity)
-            || !Mesh->GetRelativeTransform().Equals(FTransform::Identity))
+        if (!S.bAssumedCommonDisplay && (!Built.HandsActor->GetActorTransform().Equals(FTransform::Identity)
+            || !Mesh->GetRelativeTransform().Equals(FTransform::Identity)))
         {
             bSuccess = Fail(Error, TEXT("Sequencer changed the identity hand actor/component transform."));
             break;
+        }
+        if (S.bAssumedCommonDisplay)
+        {
+            if (!Built.DisplayController || !Built.RightDisplayActor
+                || !FMath::IsNearlyEqual(Built.DisplayController->DisplayFrame, static_cast<float>(Frame), .001f)
+                || !Player->GetBoundObjects(FMovieSceneObjectBindingID(UE::MovieScene::FRelativeObjectBindingID(Built.RightHandsBinding))).Contains(Built.RightDisplayActor))
+            { bSuccess = Fail(Error, TEXT("Common display did not evaluate its frame controller and both animation bindings.")); break; }
+            Built.DisplayController->ApplyDisplay();
+            auto* Right = CastChecked<UCardCapResearchSkeletalMeshComponent>(Built.RightDisplayActor->GetSkeletalMeshComponent());
+            Right->TickAnimation(0.f, false);
+            Right->RefreshBoneTransforms();
+            Right->UpdateComponentToWorld(); Right->UpdateBounds();
+            Right->MarkRenderTransformDirty(); Right->MarkRenderDynamicDataDirty();
+            const FTransform ExpectedLeft(FQuat::Identity, Built.DisplayController->HandTranslation(false, Frame));
+            const FTransform ExpectedRight(FQuat::Identity, Built.DisplayController->HandTranslation(true, Frame));
+            // ASkeletalMeshActor uses the skeletal component as its root, so
+            // the display actor translation is also the root component transform.
+            if (!Built.HandsActor->GetActorTransform().Equals(ExpectedLeft, 1.e-5)
+                || !Built.RightDisplayActor->GetActorTransform().Equals(ExpectedRight, 1.e-5)
+                || !Mesh->GetComponentTransform().Equals(ExpectedLeft, 1.e-5)
+                || !Right->GetComponentTransform().Equals(ExpectedRight, 1.e-5)
+                || Mesh->GetComponentSpaceTransforms().Num() != Right->GetComponentSpaceTransforms().Num())
+            { bSuccess = Fail(Error, TEXT("Common display transforms no longer match the explicit sidecar assumptions.")); break; }
+            for (int32 Bone = 0; Bone < Mesh->GetComponentSpaceTransforms().Num(); ++Bone)
+                if (!Mesh->GetComponentSpaceTransforms()[Bone].Equals(Right->GetComponentSpaceTransforms()[Bone], .001))
+                    bSuccess = Fail(Error, TEXT("The two display copies did not evaluate the same unchanged local animation."));
+            for (int32 LOD = 0; LOD < Mesh->GetNumLODs(); ++LOD)
+                for (int32 Material = 0; Material < Mesh->GetNumMaterials(); ++Material)
+                    if (Mesh->IsMaterialSectionShown(Material, LOD) != Built.LeftMaterialIds.Contains(Material)
+                        || Right->IsMaterialSectionShown(Material, LOD) != Built.RightMaterialIds.Contains(Material))
+                        bSuccess = Fail(Error, TEXT("Common display requires each mesh copy to show exactly its own hand sections."));
+            if (!bSuccess) break;
         }
         UCameraComponent* EvaluatedCamera = Player->GetActiveCameraComponent();
         if (!EvaluatedCamera || EvaluatedCamera->GetOwner() != Built.CameraActor)
@@ -757,6 +860,15 @@ bool FCardCapSequenceBuilder::CaptureFrames(const FCardCapSequenceBuildResult& B
         Item->SetStringField(TEXT("overview_file"), TEXT("overview") / Filename);
         Item->SetStringField(TEXT("comparison_file"), TEXT("camera_comparison") / Filename);
         Item->SetNumberField(TEXT("overview_nonblack_pixels_above_8"), OverviewNonBlack);
+        if (S.bAssumedCommonDisplay)
+        {
+            Item->SetNumberField(TEXT("display_assumed_focal_px"), Built.DisplayController->DisplayAssumedFocalPx);
+            Item->SetNumberField(TEXT("wrist_distance_over_hand_length"), Built.DisplayController->WristDistanceOverHandLength);
+            Item->SetBoolField(TEXT("both_local_animation_copies_verified"), true);
+            Item->SetBoolField(TEXT("left_right_sections_isolated"), true);
+            Item->SetArrayField(TEXT("left_display_translation"), VectorValues(Built.HandsActor->GetActorLocation()));
+            Item->SetArrayField(TEXT("right_display_translation"), VectorValues(Built.RightDisplayActor->GetActorLocation()));
+        }
         bool bLocalReadabilityPassed = true;
         if (S.bPerHandLocalPreview)
         {
@@ -823,20 +935,22 @@ bool FCardCapSequenceBuilder::CaptureFrames(const FCardCapSequenceBuildResult& B
     Report->SetStringField(TEXT("sequence"), Built.Sequence->GetPathName());
     Report->SetStringField(TEXT("map"), Built.World->GetPathName());
     Report->SetBoolField(TEXT("calibrated"), S.bCalibrated);
-    Report->SetStringField(TEXT("view_mode"), S.bPerHandLocalPreview ? TEXT("per_hand_local") : TEXT("shared"));
-    Report->SetBoolField(TEXT("display_only"), S.bPerHandLocalPreview);
-    Report->SetStringField(TEXT("coordinate_frame"), S.bPerHandLocalPreview ? TEXT("per_hand_wrist_local") : TEXT("shared_camera"));
-    Report->SetBoolField(TEXT("inter_hand_transform_known"), !S.bPerHandLocalPreview);
+    Report->SetStringField(TEXT("view_mode"), S.bAssumedCommonDisplay ? TEXT("common_assumed_display") : (S.bPerHandLocalPreview ? TEXT("per_hand_local") : TEXT("shared")));
+    Report->SetBoolField(TEXT("display_only"), S.bPerHandLocalPreview || S.bAssumedCommonDisplay);
+    Report->SetStringField(TEXT("coordinate_frame"), S.bAssumedCommonDisplay ? TEXT("assumed_common_display") : (S.bPerHandLocalPreview ? TEXT("per_hand_wrist_local") : TEXT("shared_camera")));
+    Report->SetBoolField(TEXT("inter_hand_transform_known"), !S.bPerHandLocalPreview && !S.bAssumedCommonDisplay);
     Report->SetStringField(TEXT("capture_camera_source_label"), S.CameraSourceLabel.IsEmpty()
         ? (S.bCalibrated ? TEXT("calibrated") : TEXT("prior-based, uncalibrated")) : S.CameraSourceLabel);
     Report->SetStringField(TEXT("coordinate_units"), S.CoordinateUnits);
     if (!S.DistortionPolicy.IsEmpty()) Report->SetStringField(TEXT("distortion_policy"), S.DistortionPolicy);
-    Report->SetStringField(TEXT("capture_intrinsics_policy"), S.bPerHandLocalPreview
+    Report->SetStringField(TEXT("capture_intrinsics_policy"), S.bAssumedCommonDisplay
+        ? TEXT("Source camera intrinsics remain null. The separate display configuration supplies an adjustable assumed focal length; it does not alter capture or animation data.") : (S.bPerHandLocalPreview
         ? TEXT("Source camera intrinsics are null. Separate display_only local viewers are framed independently; no full-image depth or inter-hand spatial estimate is constructed.")
-        : TEXT("fx/fy/cx/cy unchanged from capture; no camera substitution or hand actor alignment"));
-    Report->SetStringField(TEXT("comparison_layout"), S.bPerHandLocalPreview
+        : TEXT("fx/fy/cx/cy unchanged from capture; no camera substitution or hand actor alignment")));
+    Report->SetStringField(TEXT("comparison_layout"), S.bAssumedCommonDisplay
+        ? TEXT("left: common display using an assumed focal length; right: independent overview of the same assumed display. Display only; uncalibrated.") : (S.bPerHandLocalPreview
         ? TEXT("left: left hand wrist-local pose; right: right hand wrist-local pose. Independent display_only images, not one shared scene; relative hand position and depth unknown.")
-        : TEXT("left: capture K; right: independent three-quarter perspective, 60 degree horizontal FOV"));
+        : TEXT("left: capture K; right: independent three-quarter perspective, 60 degree horizontal FOV")));
     if (S.bPerHandLocalPreview)
     {
         auto LocalView = [&](ACameraActor* Actor, const FBox& Bounds, int32 VertexCount, const TArray<int32>& Materials, const TCHAR* Side)
@@ -873,6 +987,20 @@ bool FCardCapSequenceBuilder::CaptureFrames(const FCardCapSequenceBuildResult& B
         Report->SetObjectField(TEXT("local_material_readability_policy"), Readability);
         Report->SetNumberField(TEXT("display_near_clip_units"), S.NearClipCm);
     }
+    else if (S.bAssumedCommonDisplay)
+    {
+        Report->SetStringField(TEXT("display_config"), S.DisplaySpace.ConfigPath);
+        Report->SetStringField(TEXT("display_config_sha256"), S.DisplaySpace.ConfigSha256);
+        Report->SetStringField(TEXT("source_capture_sha256"), S.DisplaySpace.CaptureSha256);
+        Report->SetBoolField(TEXT("source_intrinsics_preserved_null"), true);
+        Report->SetNumberField(TEXT("display_assumed_focal_px"), S.Fx);
+        Report->SetStringField(TEXT("display_controller"), Built.DisplayController->GetPathName());
+        Report->SetStringField(TEXT("visibility_policy"), TEXT("Two copies of the same unchanged local animation, with left/right sections independently isolated. Actor translations come only from the explicit display sidecar; they are not reconstructed world positions."));
+        Report->SetArrayField(TEXT("overview_location_display_units"), VectorValues(Built.OverviewCameraActor->GetActorLocation()));
+        Report->SetArrayField(TEXT("overview_forward_direction"), VectorValues(Built.OverviewCameraActor->GetActorForwardVector()));
+        Report->SetField(TEXT("capture_camera_location_cm"), MakeShared<FJsonValueNull>());
+        Report->SetField(TEXT("capture_camera_forward_direction"), MakeShared<FJsonValueNull>());
+    }
     else
     {
         auto OverviewReport = MakeShared<FJsonObject>();
@@ -906,7 +1034,7 @@ bool FCardCapSequenceBuilder::CaptureFrames(const FCardCapSequenceBuildResult& B
     int32 DirectionalLightCount = 0;
     for (TActorIterator<ADirectionalLight> It(Built.World); It; ++It) ++DirectionalLightCount;
     Report->SetNumberField(TEXT("directional_light_count"), DirectionalLightCount);
-    if (S.bPerHandLocalPreview)
+    if (S.bPerHandLocalPreview || S.bAssumedCommonDisplay)
         for (const TCHAR* Key : {TEXT("fx"), TEXT("fy"), TEXT("cx"), TEXT("cy")}) Report->SetField(Key, MakeShared<FJsonValueNull>());
     else
     {

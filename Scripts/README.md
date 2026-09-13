@@ -8,10 +8,10 @@ For normal setup, double-click `Setup.cmd`. The installer displays runtime terms
 
 ### Use a local runtime archive
 
-Download `CardistryCapture-RuntimeDeps-v0.0.2.zip` from the [v0.0.2 release](https://github.com/Ding808/Cardistry-Auto-Animation/releases/tag/v0.0.2), then open PowerShell in the plugin directory:
+Download `CardistryCapture-RuntimeDeps-v0.0.3.zip` from the [v0.0.3 release](https://github.com/Ding808/Cardistry-Auto-Animation/releases/tag/v0.0.3), then open PowerShell in the plugin directory:
 
 ```powershell
-.\Scripts\Setup.ps1 -RuntimeArchive 'D:\Downloads\CardistryCapture-RuntimeDeps-v0.0.2.zip'
+.\Scripts\Setup.ps1 -RuntimeArchive 'D:\Downloads\CardistryCapture-RuntimeDeps-v0.0.3.zip'
 ```
 
 The ZIP contains five specific runtime libraries and their licenses. Other pinned dependencies still need an internet connection to PyPI or the official PyTorch index. Setup verifies the ZIP and each wheel's SHA-256. Do not bypass a failed check by changing the manifest.
@@ -23,7 +23,7 @@ After obtaining the files and reading and accepting the applicable runtime, MANO
 ```powershell
 .\Scripts\Setup.ps1 -NonInteractive -AcceptedRuntimeLicenses -AcceptedModelLicenses `
   -Python 'C:\Python310\python.exe' `
-  -RuntimeArchive 'D:\Downloads\CardistryCapture-RuntimeDeps-v0.0.2.zip' `
+  -RuntimeArchive 'D:\Downloads\CardistryCapture-RuntimeDeps-v0.0.3.zip' `
   -ManoArchive 'D:\Models\mano_v1_2.zip' `
   -WilorCheckpoint 'D:\Models\wilor_final.ckpt' `
   -WilorConfig 'D:\Models\model_config.yaml'
@@ -57,10 +57,10 @@ The script uses Unreal Automation Tool's `BuildPlugin`. The output directory mus
 
 ### 指定本地依赖包
 
-从 [v0.0.2 Release](https://github.com/Ding808/Cardistry-Auto-Animation/releases/tag/v0.0.2) 下载 `CardistryCapture-RuntimeDeps-v0.0.2.zip` 后，在插件目录打开 PowerShell：
+从 [v0.0.3 Release](https://github.com/Ding808/Cardistry-Auto-Animation/releases/tag/v0.0.3) 下载 `CardistryCapture-RuntimeDeps-v0.0.3.zip` 后，在插件目录打开 PowerShell：
 
 ```powershell
-.\Scripts\Setup.ps1 -RuntimeArchive 'D:\Downloads\CardistryCapture-RuntimeDeps-v0.0.2.zip'
+.\Scripts\Setup.ps1 -RuntimeArchive 'D:\Downloads\CardistryCapture-RuntimeDeps-v0.0.3.zip'
 ```
 
 这个 ZIP 只包含五个特定运行库和许可证。其余固定版本依赖仍需联网，从 PyPI 或 PyTorch 官方源获取。安装器校验 ZIP 和每个运行库的 SHA-256；校验失败时不要修改清单绕过检查。
@@ -72,7 +72,7 @@ The script uses Unreal Automation Tool's `BuildPlugin`. The output directory mus
 ```powershell
 .\Scripts\Setup.ps1 -NonInteractive -AcceptedRuntimeLicenses -AcceptedModelLicenses `
   -Python 'C:\Python310\python.exe' `
-  -RuntimeArchive 'D:\Downloads\CardistryCapture-RuntimeDeps-v0.0.2.zip' `
+  -RuntimeArchive 'D:\Downloads\CardistryCapture-RuntimeDeps-v0.0.3.zip' `
   -ManoArchive 'D:\Models\mano_v1_2.zip' `
   -WilorCheckpoint 'D:\Models\wilor_final.ckpt' `
   -WilorConfig 'D:\Models\model_config.yaml'

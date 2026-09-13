@@ -72,6 +72,100 @@ def expected_research_dir(plugin, animation_dir):
     return Path(animation_dir) / "hand_mesh"
 
 
+def read_display_config(root, capture):
+    """Read a display-only hypothesis without changing source camera or geometry."""
+    path = Path(root) / "pipeline/animation/display_space.json"
+    require(capture.get("provenance", {}).get("coordinate_frame") == "per_hand_wrist_local",
+            "An assumed display configuration requires wrist-local source data")
+    require(capture["camera"]["intrinsics"] is None and capture["camera"]["distortion"] is None
+            and capture["scale"]["meters_per_unit"] is None
+            and all(frame["global_trans_cm"] is None for hand in capture["hands"] for frame in hand["frames"]),
+            "Display assumptions cannot replace source camera, metric scale or global translations")
+    require(path.is_file(), "The common-space display configuration is missing. Reprocess the video or select the local hand view")
+    config = read_json(path)
+    require(config.get("format_version") == "cardcap.display_space/1.0" and config.get("display_only") is True
+            and config.get("mode") == "assumed_common_camera"
+            and config.get("coordinate_basis") == "ue_x_forward_y_right_z_up"
+            and config.get("coordinate_units") == "conditional_ue_display_units",
+            "The display configuration has an unsupported format or spatial claim")
+    require(config.get("capture_sha256") == sha256(Path(root) / "pipeline/animation/capture.cardcap.json")
+            and config.get("frame_count") == capture["meta"]["frame_count"]
+            and config.get("resolution") == capture["meta"]["resolution"]
+            and abs(config.get("fps", 0) - capture["meta"]["fps"]) < .001,
+            "The display configuration does not match this capture")
+    focal = config.get("display_assumed_focal_px")
+    require(type(focal) in (int, float) and math.isfinite(focal) and focal > 0,
+            "The display focal assumption must be a finite positive number")
+    frames = config.get("frames")
+    require(isinstance(frames, list) and len(frames) == capture["meta"]["frame_count"],
+            "The display configuration has missing frames")
+    for index, frame in enumerate(frames):
+        ratio = frame.get("wrist_distance_over_hand_length")
+        failures = frame.get("geometry_failed_checks")
+        require(frame.get("frame") == index and (ratio is None or
+                (type(ratio) in (int, float) and math.isfinite(ratio) and ratio >= 0))
+                and isinstance(failures, list) and all(isinstance(item, str) for item in failures),
+                "The display configuration has invalid framewise geometry diagnostics")
+    return path, config
+
+
+def common_display_review(root, capture, render, *, check_cancel=None):
+    """Verify readable common-space renders; geometry violations remain visible."""
+    import cv2
+    import numpy as np
+    path, config = read_display_config(root, capture)
+    require(render.get("view_mode") == "common_assumed_display" and render.get("display_only") is True
+            and render.get("inter_hand_transform_known") is False
+            and render.get("display_config_sha256") == sha256(path),
+            "The common-space render is not bound to this display-only hypothesis")
+    require(isinstance(render.get("frames"), list) and len(render["frames"]) == config["frame_count"]
+            and all(frame.get("frame") == index for index, frame in enumerate(render["frames"])),
+            "The common-space render has missing or misaligned frames")
+    samples, png_hashes = [], {}
+    for index, frame in enumerate(config["frames"]):
+        if check_cancel is not None:
+            check_cancel()
+        rendered = render["frames"][index]
+        require(math.isclose(rendered.get("display_assumed_focal_px", 0), config["display_assumed_focal_px"],
+                             rel_tol=1e-6, abs_tol=1e-5),
+                "The rendered camera and preview focal annotation do not match")
+        ratio = frame["wrist_distance_over_hand_length"]
+        rendered_ratio = rendered.get("wrist_distance_over_hand_length")
+        require((ratio is None and rendered_ratio is None) or
+                (type(rendered_ratio) in (int, float) and ratio is not None
+                 and math.isclose(rendered_ratio, ratio, rel_tol=1e-5, abs_tol=1e-5)),
+                "The rendered wrist spacing and preview annotation do not match")
+        for view, relative in (("common", f"frame_{index:06d}.png"),
+                               ("overview", f"overview/frame_{index:06d}.png")):
+            payload = (Path(root) / "UE_Frames" / relative).read_bytes()
+            image = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
+            require(image is not None and list(image.shape[1::-1]) == [render["width"], render["height"]],
+                    "A common-space PNG could not be decoded or has unexpected dimensions")
+            ys, xs = np.nonzero(np.max(image, axis=2) > 32)
+            image_scale = min(1280 / image.shape[1], 576 / image.shape[0])
+            edge = max(int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)) * image_scale if len(xs) else 0.
+            area = len(xs) * image_scale * image_scale
+            samples.append({"frame": index, "view": view, "long_edge_px": edge,
+                            "foreground_pixels": area, "passed": edge >= 24 and area >= 64})
+            png_hashes[relative] = hashlib.sha256(payload).hexdigest()
+    failed = [frame["frame"] for frame in config["frames"] if frame["geometry_failed_checks"]]
+    return {"status": "passed" if all(item["passed"] for item in samples) else "failed",
+            "display_only": True, "view_mode": "common_assumed_display", "samples": samples,
+            "capture_sha256": config["capture_sha256"], "display_config_sha256": sha256(path),
+            "sequence_render_sha256": sha256(Path(root) / "UE_Frames/sequence_render.json"),
+            "raw_png_sha256": png_hashes, "display_assumed_focal_px": config["display_assumed_focal_px"],
+            "geometry_failed_frames": failed, "geometry_failed_frame_count": len(failed),
+            "geometry_gate_failures_block_display": False,
+            "pixel_measurement": "Combined rendered foreground above 32, scaled to a 1280x576 pane; minimum long edge 24px and area 64px squared. This does not measure individual visible hand surfaces.",
+            "scope": "Display readability only. Common placement, focal length and dimensionless geometry are assumptions, not measurements."}
+
+
+def rendered_display_review(root, capture, render, *, check_cancel=None):
+    if render.get("view_mode") == "common_assumed_display":
+        return common_display_review(root, capture, render, check_cancel=check_cancel)
+    return local_display_review(root, capture, render, check_cancel=check_cancel)
+
+
 def local_display_review(root, capture, render, *, check_cancel=None):
     """Measure raw local PNGs independently of optional MP4 creation.
 
@@ -126,6 +220,9 @@ def read_request(path):
     for key, default in (("allow_blurry", False), ("render_preview", True)):
         require(type(request.get(key, default)) is bool, f"{key} must be a boolean")
         request.setdefault(key, default)
+    request.setdefault("display_view_mode", "common_space")
+    require(request["display_view_mode"] in ("common_space", "per_hand_local"),
+            "display_view_mode must be common_space or per_hand_local")
     mapping = request.get("bone_mapping_path") or str(Path(request["plugin_dir"]) / "Config/BoneMapping_UE5Mannequin.json")
     require(isinstance(mapping, str) and Path(mapping).is_absolute(), "The bone mapping must be an absolute file path")
     request["bone_mapping_path"] = str(Path(mapping).resolve())
@@ -383,13 +480,31 @@ class EditorJob:
         self.capture = capture
         self.capture_path = capture_path
         self.mesh_source = mesh
+        self.display_config_path = None
+        if (capture.get("provenance", {}).get("coordinate_frame") == "per_hand_wrist_local"
+                and self.request["display_view_mode"] == "common_space"):
+            if validation.get("display_space_status") == "unavailable":
+                reason = validation.get("display_space_unavailable_reason")
+                details = " ".join(reason.split())[:1200] if isinstance(reason, str) else "Crop camera information is unavailable."
+                raise ValueError("Common-space preview is unavailable. Enable Advanced Settings > Use Separate Local Preview "
+                                 "and process again to review the local hand poses. Details: " + details)
+            self.display_config_path, display = read_display_config(self.root, capture)
+            require(isinstance(validation.get("display_space_config"), str)
+                    and same_path(validation["display_space_config"], self.display_config_path)
+                    and validation.get("display_space_sha256") == sha256(self.display_config_path),
+                    "The reconstruction report does not bind this display configuration")
+            self.protect(self.display_config_path)
+            self.state["result"].update(display_config_file=str(self.display_config_path),
+                                        display_assumed_focal_px=display["display_assumed_focal_px"],
+                                        display_only=True, inter_hand_transform_known=False)
         meta = capture["meta"]
         self.state["frames_total"] = meta["frame_count"]
         self.state["result"].update(capture_file=str(capture_path), low_confidence_ranges=capture["quality"]["low_confidence_ranges"],
                                     frame_count=meta["frame_count"], fps=meta["fps"],
                                     scale_confidence=capture["scale"].get("scale_confidence", "unknown"),
                                     intrinsics_source=capture["camera"].get("intrinsics_source", "unknown"),
-                                    coordinate_frame=capture.get("provenance",{}).get("coordinate_frame","shared_camera"))
+                                    coordinate_frame=capture.get("provenance",{}).get("coordinate_frame","shared_camera"),
+                                    display_view_mode=self.request["display_view_mode"])
 
     def import_mesh(self):
         require(not self.asset_directory.exists(), "The Unreal asset directory already exists and will not be overwritten")
@@ -429,6 +544,8 @@ class EditorJob:
         args = self.ue_args("CardCapBake", path) + self.bake_common + ["-Animation=" + package,
                 "-SequenceDirectory=" + self.asset_root + "/Review", "-SequenceName=HandsReview",
                 "-RenderDirectory=" + str(self.render_dir), "-AllowCommandletRendering", "-RenderOffscreen"]
+        if self.display_config_path is not None:
+            args.append("-DisplayConfig=" + str(self.display_config_path))
         self.child("bake", args)
         self.check_bake(path, self.animation_asset, False)
         render_path = self.render_dir / "sequence_render.json"
@@ -444,11 +561,13 @@ class EditorJob:
                                   ("overview_file", f"overview/frame_{index:06d}.png")):
                 require(item[key].replace("\\", "/") == relative and (self.render_dir / relative).is_file(), "Some rendered PNG files are missing")
             require(item["nonblack_pixels_above_8"] > 0 and item["overview_nonblack_pixels_above_8"] > 0, "Unreal returned completely black frames")
-        display_gate = local_display_review(self.root, self.capture, report, check_cancel=self.check_cancel)
+        require((report.get("view_mode") == "common_assumed_display") == (self.display_config_path is not None),
+                "The rendered display mode does not match the selected preview view")
+        display_gate = rendered_display_review(self.root, self.capture, report, check_cancel=self.check_cancel)
         if display_gate is not None:
             display_path = self.render_dir / "display_geometry_review.json"
             atomic_json(display_path, display_gate)
-            require(display_gate["status"] == "passed", "The local hand preview is too small or invisible and failed the display check")
+            require(display_gate["status"] == "passed", "The hand preview is too small or invisible and failed the display check")
             self.protect(display_path)
         self.protect(render_path)
         self.state["result"].update(map_asset=report["map"], sequence_asset=report["sequence"], animation_asset=self.animation_asset)
@@ -476,6 +595,11 @@ class EditorJob:
         check_record(video, report["sha256"])
         self.protect(path)
         self.state["result"]["preview_video"] = str(video)
+        if self.display_config_path is not None:
+            require(report.get("view_mode") == "common_assumed_display" and report.get("display_only") is True
+                    and report.get("inter_hand_transform_known") is False
+                    and report.get("display_config_sha256") == self.protected[str(self.display_config_path)],
+                    "The encoded preview is not bound to the selected display hypothesis")
 
     def run(self):
         self.claim()  # Failure here deliberately leaves any existing job untouched.
@@ -539,10 +663,14 @@ def build_preview(request_path):
     render_path = root / "UE_Frames/sequence_render.json"
     render = read_json(render_path)
     local_only = capture.get("provenance",{}).get("coordinate_frame") == "per_hand_wrist_local"
-    display_gate = local_display_review(root, capture, render, check_cancel=check_cancel)
+    common_assumed = local_only and request["display_view_mode"] == "common_space"
+    display_path, display = read_display_config(root, capture) if common_assumed else (None, None)
+    require((render.get("view_mode") == "common_assumed_display") == common_assumed,
+            "The rendered display mode does not match the selected preview view")
+    display_gate = rendered_display_review(root, capture, render, check_cancel=check_cancel)
     if display_gate is not None:
         atomic_json(output / "display_geometry_review.json", display_gate)
-        require(display_gate["status"] == "passed", "The local hand preview is too small or invisible and failed the display check")
+        require(display_gate["status"] == "passed", "The hand preview is too small or invisible and failed the display check")
     video = Path(request["video_path"])
     check_record(video, capture["meta"]["source_video_sha256"])
     count, fps = capture["meta"]["frame_count"], capture["meta"]["fps"]
@@ -588,6 +716,7 @@ def build_preview(request_path):
                     (320, 697), cv2.FONT_HERSHEY_SIMPLEX, .43, (210, 210, 210), 1, cv2.LINE_AA)
         return canvas
 
+    frame_annotations = []
     try:
         for index in range(count):
             check_cancel()
@@ -610,7 +739,21 @@ def build_preview(request_path):
                     hand_labels.append(f"{hand['side']}: {sample['confidence']:.2f} {kind}")
             cameras = "Intrinsics: " + capture["camera"].get("intrinsics_source", "unknown")
             scale = "Metric scale: " + str(capture["scale"].get("scale_confidence", "unknown")) + " | units: " + capture.get("provenance", {}).get("coordinate_units", "legacy cm")
-            if local_only:
+            if common_assumed:
+                assumed_frame = display["frames"][index]
+                focal = display["display_assumed_focal_px"]
+                wrist_ratio = assumed_frame["wrist_distance_over_hand_length"]
+                ratio_text = f"{wrist_ratio:.3f}" if wrist_ratio is not None else "unavailable"
+                failures = assumed_frame["geometry_failed_checks"]
+                geometry_label = f" | REVIEW: {len(failures)} geometry gate(s)" if failures else ""
+                assumption_label = (f"display_assumed_focal_px={focal:.2f} | wrists/L={ratio_text} | "
+                                    f"UNCALIBRATED{geometry_label}")
+                pose_panes = [pane(images[0], "COMMON SPACE | assumed camera | NOT A MEASUREMENT", assumption_label),
+                              pane(images[1], "COMMON SPACE | independent overview | display only", assumption_label)]
+                frame_annotations.append({"frame": index, "display_assumed_focal_px": focal,
+                                          "wrist_distance_over_hand_length": wrist_ratio,
+                                          "geometry_failed_checks": failures, "annotation": assumption_label})
+            elif local_only:
                 spatial_note = "Relative hand placement UNKNOWN | display_only local camera | no scene depth"
                 pose_panes = [pane(images[0], "LEFT hand | independent wrist-local pose",spatial_note),
                               pane(images[1], "RIGHT hand | independent wrist-local pose",spatial_note)]
@@ -647,13 +790,21 @@ def build_preview(request_path):
     report = {"status": "passed", "path": str(video_path), "sha256": sha256(video_path), "decoded_frames": decoded,
               "fps": fps, "resolution": [3840, 720], "capture_sha256": sha256(capture_path),
               "source_video_sha256": sha256(video), "sequence_render_sha256": sha256(render_path),
-              "layout": "Three 1280x720 panes; source/left-local/right-local" if local_only else "Three 1280x720 panes; source/capture-camera/overview",
-              "view_mode": "per_hand_local" if local_only else "shared_camera",
+              "layout": ("Three 1280x720 panes; source/assumed-common-space/independent-common-overview" if common_assumed else
+                         "Three 1280x720 panes; source/left-local/right-local" if local_only else "Three 1280x720 panes; source/capture-camera/overview"),
+              "view_mode": "common_assumed_display" if common_assumed else "per_hand_local" if local_only else "shared_camera",
               "display_only": local_only, "inter_hand_transform_known": not local_only,
               "display_review": "display_geometry_review.json" if local_only else None,
               "source_color_legend": {kind: {"label": label, "bgr": color} for kind, (label, color) in source_styles.items()},
               "coordinate_units": capture.get("provenance", {}).get("coordinate_units"),
-              "geometry_changed": False, "worker_source_sha256": sha256(Path(__file__))}
+              "geometry_changed": False, "source_camera_or_metric_scale_changed": False,
+              "display_translations_applied": common_assumed,
+              "geometry_change_scope": "Source capture and animation remain unchanged; display-only translations are declared separately.",
+              "display_config_sha256": sha256(display_path) if display_path is not None else None,
+              "display_assumed_focal_px": display["display_assumed_focal_px"] if common_assumed else None,
+              "display_frame_annotations": frame_annotations,
+              "display_geometry_failed_frames": [item["frame"] for item in frame_annotations if item["geometry_failed_checks"]],
+              "worker_source_sha256": sha256(Path(__file__))}
     atomic_json(output / "preview.json", report)
 
 

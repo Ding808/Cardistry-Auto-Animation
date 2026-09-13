@@ -45,4 +45,5 @@ private:
     FString LocalError;
     bool bAllowBlurry = false;
     bool bRenderPreview = true;
+    bool bUseSeparateLocalPreview = false;
 };

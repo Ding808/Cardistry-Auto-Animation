@@ -610,12 +610,27 @@ public:
         int32 ActorCount = 0;
         ACardCapResearchHandsActor* Hands = nullptr;
         for (TActorIterator<ACardCapResearchHandsActor> It(World); It; ++It) { Hands = *It; ++ActorCount; }
-        if (ActorCount != 1) { return false; }
+        ACardCapDisplaySpaceActor* Display = nullptr;
+        if (State.HasCommonDisplay())
+        {
+            for (TActorIterator<ACardCapDisplaySpaceActor> It(World); It; ++It) Display = *It;
+            if (!Display || ActorCount != 2 || !Display->LeftHand || !Display->RightHand || Display->bShowLocalHands) return false;
+            if (Capture.Camera.bHasIntrinsics || Capture.bInterHandTransformKnown)
+                return Finish(TEXT("Common display must not make source camera or inter-hand truth known."));
+            if (!FMath::IsNearlyEqual(Display->DisplayFrame, 0.f, .001f)
+                || !Display->LeftHand->GetActorLocation().Equals(Display->HandTranslation(false, 0), 1.e-5)
+                || !Display->RightHand->GetActorLocation().Equals(Display->HandTranslation(true, 0), 1.e-5)) return false;
+            Hands = Display->LeftHand;
+        }
+        else if (ActorCount != 1) { return false; }
         USkeletalMeshComponent* Mesh = Hands->GetSkeletalMeshComponent();
         bActorIdentity = Hands->GetActorTransform().Equals(FTransform::Identity);
-        bComponentIdentity = Mesh->GetComponentTransform().Equals(FTransform::Identity);
-        if (!bActorIdentity || !bComponentIdentity) { return Finish(TEXT("Result hands have a non-identity transform.")); }
-        if (Capture.FormatVersion == TEXT("1.3") && !Capture.bInterHandTransformKnown)
+        bComponentIdentity = Mesh->GetRelativeTransform().Equals(FTransform::Identity);
+        if (!Display && (!bActorIdentity || !bComponentIdentity)) { return Finish(TEXT("Result source component transform was modified.")); }
+        if (Display && (!Mesh->GetComponentTransform().Equals(FTransform(FQuat::Identity, Display->HandTranslation(false, 0)), 1.e-5)
+            || !Display->RightHand->GetSkeletalMeshComponent()->GetComponentTransform().Equals(FTransform(FQuat::Identity, Display->HandTranslation(true, 0)), 1.e-5)))
+            return Finish(TEXT("Reloaded display root components do not match their declared assumptions."));
+        if (!Display && Capture.FormatVersion == TEXT("1.3") && !Capture.bInterHandTransformKnown)
         {
             const auto* LocalMesh = Cast<UCardCapResearchSkeletalMeshComponent>(Mesh);
             if (!LocalMesh || !LocalMesh->bSeparateLocalHands || LocalMesh->bShowRightLocalHand
@@ -633,14 +648,16 @@ public:
         MaxJointErrorCm = 0;
         for (const FCardCapHand& Hand : Capture.Hands)
         {
+            USkeletalMeshComponent* HandMesh = Display && Hand.Side == TEXT("right") ? Display->RightHand->GetSkeletalMeshComponent() : Mesh;
+            const FVector DisplayTranslation = Display ? Display->HandTranslation(Hand.Side == TEXT("right"), 0) : FVector::ZeroVector;
             const FCardCapHandBoneMapping* Mapping = Capture.BoneMapping.Hands.Find(Hand.Side);
             if (!Mapping || Hand.Frames.IsEmpty() || Hand.Frames[0].Frame != 0) { return Finish(TEXT("Capture lacks configured first-frame hands.")); }
             for (int32 Index = 0; Index < Mapping->BoneNames.Num(); ++Index)
             {
                 const FName Bone = Mapping->BoneNames[Index];
-                if (Mesh->GetBoneIndex(Bone) == INDEX_NONE) { return Finish(TEXT("Live result is missing a configured hand bone.")); }
-                const FVector Actual = Mesh->GetBoneLocation(Bone, EBoneSpaces::WorldSpace);
-                const FVector Expected = Hand.Frames[0].JointPositionsCm[Capture.BoneMapping.LandmarkIndices[Index]];
+                if (HandMesh->GetBoneIndex(Bone) == INDEX_NONE) { return Finish(TEXT("Live result is missing a configured hand bone.")); }
+                const FVector Actual = HandMesh->GetBoneLocation(Bone, EBoneSpaces::WorldSpace);
+                const FVector Expected = Hand.Frames[0].JointPositionsCm[Capture.BoneMapping.LandmarkIndices[Index]] + DisplayTranslation;
                 const double Error = FVector::Dist(Actual, Expected);
                 if (!FMath::IsFinite(Error)) { return Finish(TEXT("Live result contains a non-finite joint location.")); }
                 MaxJointErrorCm = FMath::Max(MaxJointErrorCm, Error);
@@ -666,8 +683,11 @@ private:
         const double Now = FPlatformTime::Seconds();
         if (Now < NextViewportRead) return false;
         NextViewportRead = Now + .25;
-        const bool bLocal = Capture.FormatVersion == TEXT("1.3") && !Capture.bInterHandTransformKnown;
-        const FString CameraPrefix = bLocal ? TEXT("Left local viewer") : TEXT("Capture camera");
+        ACardCapDisplaySpaceActor* Display = nullptr;
+        if (Bridge->GetSnapshot().HasCommonDisplay())
+            for (TActorIterator<ACardCapDisplaySpaceActor> It(World); It; ++It) Display = *It;
+        const bool bLocal = !Display && Capture.FormatVersion == TEXT("1.3") && !Capture.bInterHandTransformKnown;
+        const FString CameraPrefix = Display ? TEXT("Common display camera") : (bLocal ? TEXT("Left local viewer") : TEXT("Capture camera"));
         FLevelEditorViewportClient* Client = nullptr;
         ViewportCandidates.Empty();
         for (FLevelEditorViewportClient* Candidate : GEditor->GetLevelViewportClients())
@@ -717,7 +737,8 @@ private:
             for (const FVector& Point : Hand.Frames[0].JointPositionsCm)
             {
                 FVector2D Pixel;
-                if (!FSceneView::ProjectWorldToScreen(Point, View->UnscaledViewRect,
+                const FVector DisplayPoint = Point + (Display ? Display->HandTranslation(Hand.Side == TEXT("right"), 0) : FVector::ZeroVector);
+                if (!FSceneView::ProjectWorldToScreen(DisplayPoint, View->UnscaledViewRect,
                     View->ViewMatrices.GetViewProjectionMatrix(), Pixel))
                 { ViewportFailure = TEXT("Result hand projects behind the actual level viewport camera."); return false; }
                 ProjectedBounds += Pixel;
