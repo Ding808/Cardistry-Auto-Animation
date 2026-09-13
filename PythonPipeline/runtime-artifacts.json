@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "release": "v0.0.1",
+  "archive_url": "https://github.com/Ding808/Cardistry-Auto-Animation/releases/download/v0.0.1/CardistryCapture-RuntimeDeps-v0.0.1.zip",
+  "archive_sha256": "0525b488ff9fc714318995a4723fe075aac6bed64c4b13d7956cf117c94b2ab1",
+  "wheels": [
+    {"file": "numpy-1.26.4-1release-cp310-cp310-win_amd64.whl", "package": "numpy", "version": "1.26.4", "sha256": "ae762161f74bd10619bf3dd4707053b68ecb1c6233a4b5b7e281027ee186c835"},
+    {"file": "scipy-1.15.2-1cardistry_mklseq-cp310-cp310-win_amd64.whl", "package": "scipy", "version": "1.15.2", "sha256": "5fc0a996104e2b5b7dffd211c90ff01d5d676380a546ab829c3534c529552d3e"},
+    {"file": "mediapipe-0.10.31-1cardcap-py3-none-win_amd64.whl", "package": "mediapipe", "version": "0.10.31", "sha256": "490f0b799a574d9f06f115df8e51e73ef0658206c01f943015c780146a1d39e3"},
+    {"file": "sounddevice-0.5.5-1cardcap-py3-none-win_amd64.whl", "package": "sounddevice", "version": "0.5.5", "sha256": "e0d1aa45ab9f95dc9328c0d37cb96479df4715c7b014e1e225ac646a2d1e66d0"},
+    {"file": "manifold3d-3.5.3-cp310-cp310-win_amd64.whl", "package": "manifold3d", "version": "3.5.3", "sha256": "fd07025ae570b6a5dc4431b3c57d2f0292c6ac0bb4cc5cf23d44934437351122"}
+  ]
+}

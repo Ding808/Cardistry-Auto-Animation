@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "root_bone": "root",
+  "mano_joint_order": ["wrist", "index_1", "index_2", "index_3", "middle_1", "middle_2", "middle_3", "pinky_1", "pinky_2", "pinky_3", "ring_1", "ring_2", "ring_3", "thumb_1", "thumb_2", "thumb_3"],
+  "mano_parents": [-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 0, 10, 11, 0, 13, 14],
+  "landmark_indices": [0, 5, 6, 7, 9, 10, 11, 17, 18, 19, 13, 14, 15, 1, 2, 3],
+  "hands": {
+    "left": {
+      "bone_names": ["hand_l", "index_01_l", "index_02_l", "index_03_l", "middle_01_l", "middle_02_l", "middle_03_l", "pinky_01_l", "pinky_02_l", "pinky_03_l", "ring_01_l", "ring_02_l", "ring_03_l", "thumb_01_l", "thumb_02_l", "thumb_03_l"],
+      "rest_offset_camera_m": [-0.12, 0.0, 0.0]
+    },
+    "right": {
+      "bone_names": ["hand_r", "index_01_r", "index_02_r", "index_03_r", "middle_01_r", "middle_02_r", "middle_03_r", "pinky_01_r", "pinky_02_r", "pinky_03_r", "ring_01_r", "ring_02_r", "ring_03_r", "thumb_01_r", "thumb_02_r", "thumb_03_r"],
+      "rest_offset_camera_m": [0.12, 0.0, 0.0]
+    }
+  }
+}

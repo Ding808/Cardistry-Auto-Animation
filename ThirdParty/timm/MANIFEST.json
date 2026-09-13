@@ -1,0 +1,30 @@
+{
+  "version": "0.6.12",
+  "license": "Apache-2.0; PyTorch-derived portions retain their BSD-style license",
+  "files": [
+    {
+      "relative_path": "LICENSE",
+      "sha256": "71b111620fa32c17a80ccd6db2da759d31a591e497d8b5f382174f59d1b59d49",
+      "source_url": "https://github.com/huggingface/pytorch-image-models/blob/v0.6.12/LICENSE",
+      "modified": false
+    },
+    {
+      "relative_path": "timm/models/layers/drop.py",
+      "sha256": "0e0e514f16aae1ebeadef0b3fe787d7567050adca0c8a184cb512449890350b5",
+      "source_url": "https://github.com/huggingface/pytorch-image-models/blob/v0.6.12/timm/models/layers/drop.py",
+      "modified": false
+    },
+    {
+      "relative_path": "timm/models/layers/helpers.py",
+      "sha256": "2b336f2434001df65cce34089e07b4d930ba54ee4745fb6fc0c8fd53bc5b9599",
+      "source_url": "https://github.com/huggingface/pytorch-image-models/blob/v0.6.12/timm/models/layers/helpers.py",
+      "modified": false
+    },
+    {
+      "relative_path": "timm/models/layers/weight_init.py",
+      "sha256": "8a5c7462ae53c4671bf474e4c96d23a3e2681deed03630b2050ddb81a4a52a7b",
+      "source_url": "https://github.com/huggingface/pytorch-image-models/blob/v0.6.12/timm/models/layers/weight_init.py",
+      "modified": false
+    }
+  ]
+}

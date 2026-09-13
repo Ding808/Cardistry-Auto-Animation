@@ -1,0 +1,6 @@
+{
+  "hand_length_mm": null,
+  "measurement_definition": "Wrist center to middle fingertip with fingers extended",
+  "note": "Optional measurement of this subject with an explicit definition and provenance. Null preserves relative model geometry; no population length is substituted.",
+  "measurement_uncertainty_mm": null
+}

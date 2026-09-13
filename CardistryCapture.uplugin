@@ -1,0 +1,23 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.0.1",
+  "FriendlyName": "Cardistry Capture",
+  "Description": "Offline hand reconstruction with an editor panel for video processing, animation generation and review. Card reconstruction and physics remain in development.",
+  "Category": "Animation",
+  "CreatedBy": "CardistryCapture",
+  "EnabledByDefault": true,
+  "CanContainContent": true,
+  "IsBetaVersion": true,
+  "Installed": false,
+  "SupportedTargetPlatforms": ["Win64"],
+  "Plugins": [
+    { "Name": "LevelSequenceEditor", "Enabled": true, "TargetAllowList": ["Editor"] },
+    { "Name": "Interchange", "Enabled": true, "TargetAllowList": ["Editor"] },
+    { "Name": "InterchangeEditor", "Enabled": true, "TargetAllowList": ["Editor"] }
+  ],
+  "Modules": [
+    { "Name": "CardistryCapture", "Type": "Runtime", "LoadingPhase": "Default", "PlatformAllowList": ["Win64"] },
+    { "Name": "CardistryCaptureEditor", "Type": "Editor", "LoadingPhase": "Default", "PlatformAllowList": ["Win64"] }
+  ]
+}

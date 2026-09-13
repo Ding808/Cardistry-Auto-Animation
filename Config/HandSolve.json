@@ -1,0 +1,12 @@
+{
+  "reprojection_weight": 1.0,
+  "model_projection_consistency_weight": 1.0,
+  "temporal_weight": 0.5,
+  "depth_temporal_weight_ratio": 3.0,
+  "intersection_volume_weight": 0.2,
+  "window_frames": 15,
+  "window_stride": 5,
+  "huber_scale": 3.0,
+  "max_function_evaluations": 80,
+  "volume_gradient_step_m": 1e-05
+}

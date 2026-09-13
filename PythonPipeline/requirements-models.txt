@@ -1,0 +1,2 @@
+# Install only after separately accepting the model implementation license.
+smplx==0.1.28
