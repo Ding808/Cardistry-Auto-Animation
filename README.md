@@ -8,6 +8,31 @@ Turn a video into editable hand animation and a review scene in Unreal Engine.
 
 **v0.0.2 targets Windows x64 / Unreal Engine 5.4; validation uses UE 5.4.4.** Results are animation drafts. Without reliable camera parameters, each hand is shown in its own local space. Relative hand placement, depth, and real-world scale remain unknown. Card reconstruction and physics simulation are not available.
 
+### Demo preview
+
+**Source video → hand animation in Unreal Engine.** These examples show earlier noncommercial research using the same cardistry clip. Click either image to view it at full size.
+
+<table>
+  <tr>
+    <th>Source vs. reconstructed hands</th>
+    <th>Experimental card-surface candidates</th>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><a href="docs/media/hand-comparison.jpg"><img src="docs/media/hand-comparison.jpg" alt="Four matching frames comparing the original cardistry video with reconstructed hands in Unreal Engine" width="440"></a></td>
+    <td width="50%" valign="top"><a href="docs/media/card-surface-candidates.jpg"><img src="docs/media/card-surface-candidates.jpg" alt="Twelve experimental card-surface mask candidates overlaid on the original video" width="440"></a></td>
+  </tr>
+</table>
+
+**Watch the matching comparison video** — 3.23 seconds · 97 frames · 30 fps. The source is on the left and the Unreal Engine hand reconstruction is on the right. Frames 61, 70, 87, and 96 match the hand-comparison image above.
+
+https://github.com/user-attachments/assets/9b5575d2-13fa-4fc8-bd88-d057ff2b1870
+
+You can also [open the video separately](https://github.com/user-attachments/assets/9b5575d2-13fa-4fc8-bd88-d057ff2b1870).
+
+The combined-hand view is an earlier experiment with unverified camera parameters and scale; v0.0.2 uses separate local hand views when camera parameters are unavailable. The card overlays are candidate masks, not verified card tracking or a released reconstruction feature. Original observation and interpolation labels are retained in the video.
+
+MANO was used for hand animation courtesy of the Max Planck Institute for Intelligent Systems. See [model credits and license information](THIRD_PARTY_NOTICES.md).
+
 ### Quick start
 
 #### 1. Install the plugin
@@ -41,7 +66,7 @@ The release includes the redistributable detection resource and asset-generation
 
 Double-click **`Scripts/Setup.cmd`** inside the plugin. Follow the runtime and model license prompts, then select those files. Setup creates an isolated environment, checks the files, and prepares both hands. Initial dependency installation needs an internet connection.
 
-MANO, WiLoR, and SMPL-X have licenses separate from the plugin code. This reconstruction combination is intended for noncommercial research that complies with those licenses. Restricted weights, MANO meshes, and derived demo assets are not included in the public package; users prepare them locally. See [third-party notices](THIRD_PARTY_NOTICES.md).
+MANO, WiLoR, and SMPL-X have licenses separate from the plugin code. This reconstruction combination is intended for noncommercial research that complies with those licenses. Restricted weights, MANO meshes, and editable MANO-derived 3D demo assets are not included in the public package; users prepare them locally. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 #### 3. Process a video
 
@@ -99,6 +124,14 @@ The plugin's own code is covered by [LICENSE](LICENSE). Third-party code, detect
 
 **v0.0.2 面向 Windows x64 / Unreal Engine 5.4，验证环境为 UE 5.4.4。** 当前输出是动作初稿：缺少可靠相机参数时，左右手分别显示局部动作，双手相对位置、深度和真实尺度保持未知。扑克牌重建和物理模拟尚未提供。
 
+### 演示预览
+
+前面的[演示区](#demo-preview)包含两张可点击放大的图片：原视频与 UE 手部重建的逐帧对照，以及实验性的牌面候选掩膜。配套[对比视频](https://github.com/user-attachments/assets/9b5575d2-13fa-4fc8-bd88-d057ff2b1870)为同一段素材的完整 97 帧，共 3.23 秒、30 fps；左侧为原视频，右侧为 UE 重建，手部对照图对应其中第 61、70、87、96 帧。
+
+这些是早期非商业研究演示：合并双手画面的相机参数和尺度尚未验证，v0.0.2 在缺少相机参数时显示各自的局部动作。牌面覆盖图只表示候选掩膜，不代表已验证的扑克牌追踪或已发布的重建功能。视频保留原有检测与插值状态标注。
+
+手部动画使用 MANO，鸣谢 Max Planck Institute for Intelligent Systems。模型署名和许可见[第三方资源说明](THIRD_PARTY_NOTICES.md)。
+
 ### 快速开始
 
 #### 1. 安装插件
@@ -132,7 +165,7 @@ The plugin's own code is covered by [LICENSE](LICENSE). Third-party code, detect
 
 双击插件内 **`Scripts/Setup.cmd`**，按提示确认运行库和模型的适用许可，再选择这些文件。安装器会创建独立环境、校验文件并准备左右手；首次需要联网下载依赖。
 
-MANO、WiLoR、SMPL-X 的许可与插件代码许可分开，当前重建组合面向符合这些许可的非商业研究用途。公开包不含受限权重、MANO 手模或其派生演示资产；它们由使用者在本机准备。详情见 [第三方资源说明](THIRD_PARTY_NOTICES.md)。
+MANO、WiLoR、SMPL-X 的许可与插件代码许可分开，当前重建组合面向符合这些许可的非商业研究用途。公开包不含受限权重、MANO 手模或其可编辑的派生三维演示资产；它们由使用者在本机准备。详情见 [第三方资源说明](THIRD_PARTY_NOTICES.md)。
 
 #### 3. 处理视频
 
