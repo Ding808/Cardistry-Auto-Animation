@@ -210,7 +210,7 @@ class EditorJobTests(unittest.TestCase):
             self.assertIn("-Mapping=" + fixture.request["bone_mapping_path"], fixture.calls[2][0])
             self.assertIn("-Mapping=" + fixture.request["bone_mapping_path"], fixture.calls[3][0])
             before = (fixture.root / "status.json").read_bytes()
-            with self.assertRaisesRegex(ValueError, "任务目录已使用"):
+            with self.assertRaisesRegex(ValueError, "The job directory is already in use"):
                 fixture.worker().run()
             self.assertEqual(before, (fixture.root / "status.json").read_bytes())
 
@@ -222,6 +222,7 @@ class EditorJobTests(unittest.TestCase):
                 self.assertEqual(fixture.worker().run(), 1)
                 status = job.read_json(fixture.root / "status.json")
                 self.assertEqual(status["status"], "failed")
+                self.assertEqual(status["message_language"], "en")
                 self.assertIsNotNone(status["error"]["details"])
                 self.assertEqual(len(fixture.calls), calls)
                 self.assertFalse((fixture.root / "job_result.json").exists())
@@ -230,13 +231,13 @@ class EditorJobTests(unittest.TestCase):
         raw_identity_error = ("ValueError: Input has unknown or duplicate hand side in a frame; "
                               "resolve identity before animation export")
         unknown_error = "RuntimeError: fixture model stopped; --status succeeded is diagnostic text"
-        for raw_error, expected in ((raw_identity_error, "部分帧的左右手身份不明确或重复，无法生成动画。"),
+        for raw_error, expected in ((raw_identity_error, "Some frames contain unknown or duplicate hand identities. Animation could not be generated."),
                                     ("ValueError: Input has unknown hand side; resolve identity before animation export",
-                                     "输入中有无法识别的左右手标签，无法生成动画。"),
+                                     "The input contains unrecognized left/right hand labels. Animation could not be generated."),
                                     ("ValueError: Input has duplicate hand side without resolved identity; resolve identity before animation export",
-                                     "部分帧的左右手身份仍有冲突，无法可靠生成动画。"),
+                                     "Some frames still contain conflicting hand identities. Animation could not be generated reliably."),
                                     ("ValueError: Both hands need at least one usable real observation after identity conflict filtering",
-                                     "未找到两只手各自可用的观测，无法生成双手动画。"),
+                                     "Each hand needs a usable observation. Both-hand animation could not be generated."),
                                     (unknown_error, unknown_error)):
             with self.subTest(error=raw_error), tempfile.TemporaryDirectory() as temporary:
                 fixture = Fixture(Path(temporary))
@@ -260,8 +261,8 @@ class EditorJobTests(unittest.TestCase):
                 self.assertFalse((fixture.root / "job_result.json").exists())
 
     def test_reconstruction_failure_fallback_and_cancel_do_not_become_success(self):
-        cases = (("{partial", None, False, "退出码 7"),
-                 ({"status": "failed", "error": {"command": "not error text"}}, None, False, "退出码 7"),
+        cases = (("{partial", None, False, "exit code 7"),
+                 ({"status": "failed", "error": {"command": "not error text"}}, None, False, "exit code 7"),
                  ({"status": "completed", "error": "ignore completed report"},
                   {"status": "failed", "error": "OSError: retained progress failure"}, False,
                   "OSError: retained progress failure"),
@@ -317,7 +318,7 @@ class EditorJobTests(unittest.TestCase):
                 marker = directory / "old.bin"
                 marker.write_bytes(b"keep")
                 if existing == "research":
-                    with self.assertRaisesRegex(ValueError, "任务目录已使用"):
+                    with self.assertRaisesRegex(ValueError, "The job directory is already in use"):
                         worker.run()
                 else:
                     self.assertEqual(worker.run(), 1)

@@ -23,10 +23,10 @@ import traceback
 from cardcap.atomic_file import replace_with_windows_sharing_retry
 
 PIPELINE = Path(__file__).resolve().parents[1]
-MESSAGES = {"preflight": "检查本地环境与输入", "reconstruct": "重建手部动作",
-            "import": "导入本次配套手模", "bake": "生成动画与双视角画面",
-            "verify": "在新进程中复核动画", "preview": "制作原片与动画对照视频",
-            "complete": "处理完成，请检查低置信度片段"}
+MESSAGES = {"preflight": "Checking the local environment and input", "reconstruct": "Reconstructing hand motion",
+            "import": "Importing hand models for this job", "bake": "Generating animation and both hand views",
+            "verify": "Verifying animation in a fresh process", "preview": "Creating the source and animation comparison video",
+            "complete": "Processing complete. Please review low-confidence sections."}
 BASE_PROGRESS = {"preflight": 0.0, "reconstruct": 0.05, "import": 0.52,
                  "bake": 0.60, "verify": 0.88, "preview": 0.93, "complete": 1.0}
 
@@ -64,7 +64,7 @@ def same_path(left, right):
 
 
 def check_record(path, digest):
-    require(Path(path).is_file() and sha256(path) == digest, f"文件缺失或校验不符: {path}")
+    require(Path(path).is_file() and sha256(path) == digest, f"File missing or checksum mismatch: {path}")
 
 
 def expected_research_dir(plugin, animation_dir):
@@ -84,7 +84,7 @@ def local_display_review(root, capture, render, *, check_cancel=None):
     import numpy as np
     from cardcap.geometry_checks import assess_display_samples
     require(capture["camera"]["intrinsics"] is None and render.get("view_mode") == "per_hand_local",
-            "相机未知时必须提供左右手独立局部预览，不能复用共同空间视图")
+            "Unknown camera parameters require separate local hand previews; a shared-space view cannot be reused")
     root = Path(root)
     samples = {"left": [], "right": []}
     png_hashes = {}
@@ -96,7 +96,7 @@ def local_display_review(root, capture, render, *, check_cancel=None):
             payload = (root / "UE_Frames" / relative).read_bytes()
             image = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
             require(image is not None and list(image.shape[1::-1]) == [render["width"], render["height"]],
-                    "UE PNG 无法解码或尺寸不符")
+                    "An Unreal PNG could not be decoded or has unexpected dimensions")
             # Raw single-hand images have black backgrounds and no captions.
             ys, xs = np.nonzero(np.max(image, axis=2) > 32)
             ratio = min(1280 / image.shape[1], 576 / image.shape[0])
@@ -115,19 +115,19 @@ def local_display_review(root, capture, render, *, check_cancel=None):
 def read_request(path):
     path = Path(path).resolve()
     request = read_json(path)
-    require(type(request.get("schema_version")) is int and request["schema_version"] == 1, "不支持的任务请求版本")
+    require(type(request.get("schema_version")) is int and request["schema_version"] == 1, "Unsupported job request version")
     require(isinstance(request.get("job_id"), str) and re.fullmatch(r"[A-Za-z0-9_]{1,100}", request["job_id"]),
-            "job_id 只允许字母、数字和下划线（最多 100 字符）")
+            "job_id must contain only letters, digits and underscores, with at most 100 characters")
     for key in ("video_path", "plugin_dir", "project_file", "editor_executable", "output_dir"):
-        require(isinstance(request.get(key), str) and request[key].strip(), f"缺少路径: {key}")
-        require(Path(request[key]).is_absolute(), f"必须使用绝对路径: {key}")
+        require(isinstance(request.get(key), str) and request[key].strip(), f"Missing path: {key}")
+        require(Path(request[key]).is_absolute(), f"An absolute path is required: {key}")
         request[key] = str(Path(request[key]).resolve())
-    require(same_path(request["output_dir"], path.parent) and path.name == "request.json", "request.json 必须位于本次 output_dir 任务根目录")
+    require(same_path(request["output_dir"], path.parent) and path.name == "request.json", "request.json must be in this job's output_dir root")
     for key, default in (("allow_blurry", False), ("render_preview", True)):
-        require(type(request.get(key, default)) is bool, f"{key} 必须为布尔值")
+        require(type(request.get(key, default)) is bool, f"{key} must be a boolean")
         request.setdefault(key, default)
     mapping = request.get("bone_mapping_path") or str(Path(request["plugin_dir"]) / "Config/BoneMapping_UE5Mannequin.json")
-    require(isinstance(mapping, str) and Path(mapping).is_absolute(), "骨映射必须是绝对文件路径")
+    require(isinstance(mapping, str) and Path(mapping).is_absolute(), "The bone mapping must be an absolute file path")
     request["bone_mapping_path"] = str(Path(mapping).resolve())
     return request
 
@@ -135,19 +135,19 @@ def read_request(path):
 def preflight_environment(request):
     """Read-only availability; does not initialize a model or access the network."""
     plugin = Path(request["plugin_dir"])
-    require(same_path(plugin / "PythonPipeline", PIPELINE), "请求插件目录与当前后台程序不一致")
+    require(same_path(plugin / "PythonPipeline", PIPELINE), "The requested plugin directory does not match the running worker")
     require(sys.version_info[:2] == (3, 10) and same_path(sys.prefix, PIPELINE / ".venv"),
-            "请使用插件 PythonPipeline/.venv 的 Python 3.10")
+            "Use Python 3.10 from the plugin's PythonPipeline/.venv environment")
     for key in ("video_path", "project_file", "editor_executable", "bone_mapping_path"):
-        require(Path(request[key]).is_file(), f"本地文件不存在: {request[key]}")
-    require(Path(request["editor_executable"]).name.lower() == "unrealeditor-cmd.exe", "后台需要 UnrealEditor-Cmd.exe")
-    require(Path(request["project_file"]).suffix.lower() == ".uproject", "工程文件必须是 .uproject")
+        require(Path(request[key]).is_file(), f"Local file not found: {request[key]}")
+    require(Path(request["editor_executable"]).name.lower() == "unrealeditor-cmd.exe", "The worker requires UnrealEditor-Cmd.exe")
+    require(Path(request["project_file"]).suffix.lower() == ".uproject", "The project file must be a .uproject file")
     from cardcap.hand.wilor_impl import inspect_wilor_availability
     from setup_solve import EXPECTED, installed_record
     availability = inspect_wilor_availability(PIPELINE / "models")
-    require(availability["ready"], "本地模型或依赖不可用（不会自动下载）: " + json.dumps(availability, ensure_ascii=False))
+    require(availability["ready"], "Local models or dependencies are unavailable (no automatic download): " + json.dumps(availability, ensure_ascii=False))
     for name in EXPECTED:
-        require(installed_record(name) is not None, f"缺少本地依赖 {name}，请运行插件 Scripts/Setup.cmd；后台不会安装")
+        require(installed_record(name) is not None, f"Missing local dependency {name}. Run Scripts/Setup.cmd in the plugin; the worker does not install dependencies")
     return {"models": availability, "network_or_installation_performed": False}
 
 
@@ -199,6 +199,7 @@ class EditorJob:
         self.terminate = terminate or terminate_tree
         self.started = time.monotonic()
         self.state = {"schema_version": 1, "job_id": self.request["job_id"], "status": "running",
+                      "message_language": "en",
                       "stage": "preflight", "progress": 0.0, "message": MESSAGES["preflight"],
                       "elapsed_seconds": 0.0, "frames_completed": 0, "frames_total": 0,
                       "result": {"map_asset": None, "sequence_asset": None, "animation_asset": None,
@@ -209,7 +210,7 @@ class EditorJob:
 
     def check_cancel(self):
         if self.cancel_file.exists():
-            raise Cancelled("任务已取消；部分结果已保留")
+            raise Cancelled("Processing cancelled. Partial results have been kept.")
 
     def log(self, message):
         with (self.root / "job.log").open("a", encoding="utf-8") as stream:
@@ -241,7 +242,7 @@ class EditorJob:
     def claim(self):
         # The bridge creates only request.json. Never rewrite an old terminal job.
         allowed = {"request.json", "cancel.request"}
-        require(all(p.name in allowed for p in self.root.iterdir()), "任务目录已使用；请选择新任务，旧输出不会覆盖")
+        require(all(p.name in allowed for p in self.root.iterdir()), "The job directory is already in use. Start a new job; existing output will not be overwritten")
         with (self.root / "job_started.json").open("x", encoding="utf-8") as stream:
             json.dump({"schema_version": 1, "job_id": self.request["job_id"], "worker_pid": os.getpid(),
                        "request_sha256": sha256(self.request_path)}, stream)
@@ -265,7 +266,7 @@ class EditorJob:
         self.update(frames_completed=completed, frames_total=total, progress=BASE_PROGRESS[stage] + span * fraction)
 
     def child_failure_message(self, stage, returncode, log_path):
-        message = f"{MESSAGES[stage]}失败（退出码 {returncode}）"
+        message = f"{MESSAGES[stage]} failed (exit code {returncode})"
         # Only read the current reconstruction's fixed report paths. Their
         # contents are plain diagnostic text, never commands or output paths.
         if stage == "reconstruct":
@@ -287,27 +288,27 @@ class EditorJob:
                                      "original_error": raw_error}, ensure_ascii=False))
                 known_errors = {
                     "ValueError: Input has unknown or duplicate hand side in a frame; resolve identity before animation export":
-                        "部分帧的左右手身份不明确或重复，无法生成动画。",
+                        "Some frames contain unknown or duplicate hand identities. Animation could not be generated.",
                     "ValueError: Input has unknown hand side; resolve identity before animation export":
-                        "输入中有无法识别的左右手标签，无法生成动画。",
+                        "The input contains unrecognized left/right hand labels. Animation could not be generated.",
                     "ValueError: Input has duplicate hand side without resolved identity; resolve identity before animation export":
-                        "部分帧的左右手身份仍有冲突，无法可靠生成动画。",
+                        "Some frames still contain conflicting hand identities. Animation could not be generated reliably.",
                     "ValueError: Both hands need at least one usable real observation after identity conflict filtering":
-                        "未找到两只手各自可用的观测，无法生成双手动画。",
+                        "Each hand needs a usable observation. Both-hand animation could not be generated.",
                 }
                 reason = known_errors.get(raw_error.strip(), raw_error.strip())
                 reason = " ".join(reason.split())
                 if len(reason) > 1200:
-                    reason = reason[:1200] + "…（完整原因见日志）"
-                return f"{message}：{reason} 详细日志：{log_path}"
-        return f"{message}，详见 {log_path}"
+                    reason = reason[:1200] + "... (see the log for the full reason)"
+                return f"{message}: {reason} Details: {log_path}"
+        return f"{message}. See {log_path}"
 
     def child(self, stage, args):
         self.check_cancel()
         self.check_protected()
         self.update(stage)
         log_path = self.root / (stage + ".log")
-        require(not log_path.exists(), f"阶段日志已存在，拒绝覆盖: {log_path}")
+        require(not log_path.exists(), f"The stage log already exists and will not be overwritten: {log_path}")
         self.log(json.dumps([str(arg) for arg in args], ensure_ascii=False))
         with log_path.open("w", encoding="utf-8") as log:
             process = self.popen([str(arg) for arg in args], cwd=str(self.pipeline), stdout=log,
@@ -340,42 +341,42 @@ class EditorJob:
         if self.request["allow_blurry"]:
             args.append("--allow-blurry")
         self.child("reconstruct", args)
-        require(read_json(self.output / "report.json")["status"] == "completed", "重建报告未完成")
+        require(read_json(self.output / "report.json")["status"] == "completed", "The reconstruction report is incomplete")
         validation_path = self.animation_dir / "validation.json"
         validation = read_json(validation_path)
         capture_path = self.animation_dir / "capture.cardcap.json"
         observations = self.output / "hand_observations.json"
         require(validation.get("status") == "passed" and same_path(validation["capture_path"], capture_path)
-                and same_path(validation["source_observations_path"], observations), "重建验证未绑定本次输出")
+                and same_path(validation["source_observations_path"], observations), "The reconstruction validation does not reference this job's output")
         check_record(capture_path, validation["capture_sha256"])
         check_record(observations, validation["source_observations_sha256"])
-        require(validation["source_video_sha256"] == self.protected[self.request["video_path"]], "源视频校验不符")
+        require(validation["source_video_sha256"] == self.protected[self.request["video_path"]], "Source video checksum mismatch")
         capture = read_json(capture_path)
         from cardcap.packet_contract import validate_capture
         validate_capture(capture, read_json(self.request["bone_mapping_path"]))
         require(capture["format_version"] in ("1.0", "1.2", "1.3") and not capture["packets"] and not any(capture["events"].values()),
-                "当前一键入口只生成双手初稿，不接受已有牌块或事件")
+                "This workflow generates hand drafts only; existing card packets or events are not accepted")
         require(capture["meta"]["source_video_sha256"] == validation["source_video_sha256"]
-                and same_path(capture["meta"]["source_video"], self.request["video_path"]), "capture 源视频不匹配")
+                and same_path(capture["meta"]["source_video"], self.request["video_path"]), "The capture references a different source video")
         manifest_path = self.research_dir / "MANO_ResearchHands_Manifest.json"
-        require(same_path(validation["research_hands_manifest"], manifest_path), "手模并非本次任务生成；禁止复用旧手模")
+        require(same_path(validation["research_hands_manifest"], manifest_path), "The hand model was not generated by this job; previous models cannot be reused")
         manifest = read_json(manifest_path)
         mapping_hash = self.protected[self.request["bone_mapping_path"]]
         require(validation["bone_mapping_sha256"] == mapping_hash == manifest["bone_mapping_sha256"]
-                and same_path(manifest["bone_mapping_path"], self.request["bone_mapping_path"]), "骨映射与配套手模不一致")
-        require(manifest["shared_betas"] == validation["shared_mano_shape"], "手模 shape 与动画不匹配")
+                and same_path(manifest["bone_mapping_path"], self.request["bone_mapping_path"]), "The bone mapping does not match the hand model")
+        require(manifest["shared_betas"] == validation["shared_mano_shape"], "The hand model shape does not match the animation")
         if capture["format_version"] in ("1.2", "1.3"):
             require(math.isclose(manifest["coordinates"]["geometry_scale_factor"], capture["scale"]["global_scale_factor_applied"], rel_tol=1e-10)
                     and manifest["coordinates"]["coordinate_units"] == capture["provenance"]["coordinate_units"],
-                    "手模与动画的几何乘数或单位声明不匹配")
+                    "The hand model and animation have mismatched geometry multipliers or units")
         else:
             require(math.isclose(manifest["coordinates"]["meters_per_mano_unit"], capture["scale"]["meters_per_unit"], rel_tol=1e-10),
-                    "旧格式手模与动画尺度不匹配")
+                    "The legacy hand model and animation scales do not match")
         outputs = [item for item in manifest["outputs"] if item["weight_mode"] == "top4_renormalized_UE_preview"]
-        require(len(outputs) == 1 and outputs[0] in validation["research_glb_outputs"], "缺少配套 Top4 手模记录")
+        require(len(outputs) == 1 and outputs[0] in validation["research_glb_outputs"], "The matching Top4 hand model record is missing")
         record = outputs[0]
         mesh = self.research_dir / "MANO_ResearchHands_UE_Top4Preview.glb"
-        require(same_path(record["path"], mesh) and record["bone_count"] == 33, "配套 GLB 路径或骨数不符")
+        require(same_path(record["path"], mesh) and record["bone_count"] == 33, "The matching GLB path or bone count is incorrect")
         check_record(mesh, record["sha256"])
         for path in (validation_path, capture_path, observations, manifest_path, mesh):
             self.protect(path)
@@ -391,18 +392,18 @@ class EditorJob:
                                     coordinate_frame=capture.get("provenance",{}).get("coordinate_frame","shared_camera"))
 
     def import_mesh(self):
-        require(not self.asset_directory.exists(), "本次 UE 资产目录已存在，拒绝覆盖")
+        require(not self.asset_directory.exists(), "The Unreal asset directory already exists and will not be overwritten")
         path = self.root / "UE_Import.json"
         args = self.ue_args("CardCapImportHands", path) + ["-MeshSource=" + str(self.mesh_source),
                  "-Destination=" + self.asset_root + "/Hands", "-NullRHI"]
         self.child("import", args)
         report = read_json(path)
-        require(report.get("status") == "passed" and same_path(report["source"], self.mesh_source), "导入报告未通过或源手模不匹配")
-        require(report["objects"] and all(item.get("saved_on_disk") is True for item in report["objects"]), "导入资产未全部保存")
-        require(len(report["skeletal_meshes"]) == 1, "本次应导入一个双手骨骼网格")
+        require(report.get("status") == "passed" and same_path(report["source"], self.mesh_source), "Import validation failed or the source hand model does not match")
+        require(report["objects"] and all(item.get("saved_on_disk") is True for item in report["objects"]), "Some imported assets were not saved")
+        require(len(report["skeletal_meshes"]) == 1, "This job must import one skeletal mesh containing both hands")
         mesh = report["skeletal_meshes"][0]
         require(mesh["bone_count"] == 33 and mesh["mesh_path"].startswith(self.asset_root + "/Hands/")
-                and mesh["skeleton_path"].startswith(self.asset_root + "/Hands/"), "导入网格不是本次 33 骨配套资产")
+                and mesh["skeleton_path"].startswith(self.asset_root + "/Hands/"), "The imported mesh is not this job's matching 33-bone asset")
         self.mesh_asset = mesh["mesh_path"]
         self.protect(path)
 
@@ -411,12 +412,12 @@ class EditorJob:
         require(report.get("status") == "passed" and report.get("reloaded_in_fresh_process") is reload
                 and same_path(report["capture_file"], self.capture_path)
                 and report["mesh_path"] == self.mesh_asset and report["animation_path"] == animation,
-                "动画验证未绑定本次 capture、手模与动画，或未通过")
+                "Animation validation failed or does not reference this job's capture, hand model and animation")
         require(report["source_frames"] == self.capture["meta"]["frame_count"]
                 and report["animation_keys"] == self.capture["meta"]["frame_count"] + 1
                 and abs(report["fps"] - self.capture["meta"]["fps"]) < 0.001
                 and report.get("compressed_codec_and_structure_present") is True
-                and report.get("force_raw_console_value") == 0, "动画帧数、时间或压缩验证不符")
+                and report.get("force_raw_console_value") == 0, "Animation frame count, timing or compression validation failed")
         self.protect(path)
 
     def bake(self):
@@ -434,20 +435,20 @@ class EditorJob:
         report = read_json(render_path)
         count = self.capture["meta"]["frame_count"]
         require(report.get("success") is True and report["captured_frames"] == report["requested_frames"] == count
-                and len(report["frames"]) == count, "实际 Sequencer 双视角渲染未完整完成")
+                and len(report["frames"]) == count, "The Sequencer render did not complete both hand views")
         require(report["map"] == self.asset_root + "/Review/HandsReview_Map.HandsReview_Map"
-                and report["sequence"] == self.asset_root + "/Review/HandsReview_Sequence.HandsReview_Sequence", "Review 场景不是本次资产")
+                and report["sequence"] == self.asset_root + "/Review/HandsReview_Sequence.HandsReview_Sequence", "The review scene does not belong to this job")
         for index, item in enumerate(report["frames"]):
-            require(item["frame"] == index, "渲染帧序号不连续")
+            require(item["frame"] == index, "Rendered frame indices are not consecutive")
             for key, relative in (("file", f"frame_{index:06d}.png"),
                                   ("overview_file", f"overview/frame_{index:06d}.png")):
-                require(item[key].replace("\\", "/") == relative and (self.render_dir / relative).is_file(), "渲染 PNG 不完整")
-            require(item["nonblack_pixels_above_8"] > 0 and item["overview_nonblack_pixels_above_8"] > 0, "UE 返回全黑画面")
+                require(item[key].replace("\\", "/") == relative and (self.render_dir / relative).is_file(), "Some rendered PNG files are missing")
+            require(item["nonblack_pixels_above_8"] > 0 and item["overview_nonblack_pixels_above_8"] > 0, "Unreal returned completely black frames")
         display_gate = local_display_review(self.root, self.capture, report, check_cancel=self.check_cancel)
         if display_gate is not None:
             display_path = self.render_dir / "display_geometry_review.json"
             atomic_json(display_path, display_gate)
-            require(display_gate["status"] == "passed", "局部手部预览过小或不可见，未通过显示合理性检查")
+            require(display_gate["status"] == "passed", "The local hand preview is too small or invisible and failed the display check")
             self.protect(display_path)
         self.protect(render_path)
         self.state["result"].update(map_asset=report["map"], sequence_asset=report["sequence"], animation_asset=self.animation_asset)
@@ -460,7 +461,7 @@ class EditorJob:
 
     def preview(self):
         if not self.request["render_preview"]:
-            self.log("render_preview=false：跳过 MP4；Review 场景及双视图 PNG 已保留")
+            self.log("render_preview=false: MP4 creation skipped; the review scene and both PNG views have been kept")
             return
         self.child("preview", [self.python, self.pipeline / "editor_job.py", "--preview-request", self.request_path])
         path = self.root / "Preview/preview.json"
@@ -471,7 +472,7 @@ class EditorJob:
                 and same_path(report["path"], video) and report["capture_sha256"] == self.protected[str(self.capture_path)]
                 and report["source_video_sha256"] == self.protected[self.request["video_path"]]
                 and report["sequence_render_sha256"] == self.protected[str(self.render_dir / "sequence_render.json")],
-                "预览未完整重解码或与本次输入不一致")
+                "The preview could not be fully decoded or does not match this job's input")
         check_record(video, report["sha256"])
         self.protect(path)
         self.state["result"]["preview_video"] = str(video)
@@ -482,7 +483,7 @@ class EditorJob:
             self.update("preflight")
             self.check_cancel()
             require(not self.output.exists() and not self.asset_directory.exists() and not self.research_dir.exists(),
-                    "派生输出或 UE 资产目录已存在；请选择新任务")
+                    "Generated output or the Unreal asset directory already exists. Start a new job")
             environment = self.environment_check(self.request)
             atomic_json(self.root / "preflight.json", environment)
             for path in (self.request_path, self.request["video_path"], self.request["bone_mapping_path"]):
@@ -502,7 +503,7 @@ class EditorJob:
             return 0
         except (Cancelled, KeyboardInterrupt) as error:
             self.log(str(error))
-            self.update(status="cancelled", message="任务已取消，部分结果已保留", error=None)
+            self.update(status="cancelled", message="Processing cancelled. Partial results have been kept.", error=None)
             return 2
         except Exception as error:
             details = traceback.format_exc()
@@ -510,9 +511,9 @@ class EditorJob:
             # A request can arrive while reports are being read after a child
             # exits. Its absence/partial output must not change cancel to fail.
             if self.cancel_file.exists():
-                self.update(status="cancelled", message="任务已取消，部分结果已保留", error=None)
+                self.update(status="cancelled", message="Processing cancelled. Partial results have been kept.", error=None)
                 return 2
-            self.update(status="failed", message="处理失败，请查看日志",
+            self.update(status="failed", message="Processing failed. Please view the log.",
                         error={"message": str(error), "details": details, "log_path": str(self.root / "job.log")})
             return 1
 
@@ -527,11 +528,11 @@ def build_preview(request_path):
 
     def check_cancel():
         if cancel.exists():
-            raise Cancelled("预览已取消")
+            raise Cancelled("Preview creation cancelled")
 
     check_cancel()
     output = root / "Preview"
-    require(not output.exists(), "预览目录已存在，拒绝覆盖")
+    require(not output.exists(), "The preview directory already exists and will not be overwritten")
     output.mkdir()
     capture_path = root / "pipeline/animation/capture.cardcap.json"
     capture = read_json(capture_path)
@@ -541,15 +542,15 @@ def build_preview(request_path):
     display_gate = local_display_review(root, capture, render, check_cancel=check_cancel)
     if display_gate is not None:
         atomic_json(output / "display_geometry_review.json", display_gate)
-        require(display_gate["status"] == "passed", "局部手部预览过小或不可见，未通过显示合理性检查")
+        require(display_gate["status"] == "passed", "The local hand preview is too small or invisible and failed the display check")
     video = Path(request["video_path"])
     check_record(video, capture["meta"]["source_video_sha256"])
     count, fps = capture["meta"]["frame_count"], capture["meta"]["fps"]
     video_path = output / "review.mp4"
     source = cv2.VideoCapture(str(video))
     writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (3840, 720))
-    require(source.isOpened() and writer.isOpened(), "无法读取原片或创建 MP4")
-    require(abs(source.get(cv2.CAP_PROP_FPS) - fps) < 0.01, "原片帧率与动画不一致")
+    require(source.isOpened() and writer.isOpened(), "Could not read the source video or create the MP4 preview")
+    require(abs(source.get(cv2.CAP_PROP_FPS) - fps) < 0.01, "The source video and animation frame rates do not match")
 
     def pane(image, title, label):
         canvas = np.full((720, 1280, 3), 18, np.uint8)
@@ -575,7 +576,7 @@ def build_preview(request_path):
             sample = next((f for f in hand["frames"] if f["frame"] == index), None) if hand else None
             kind = sample.get("sample_kind", sample.get("diagnostics", {}).get("sample_kind", "missing")) if sample else "missing"
             kind = "detected_model_observation" if kind == "observed" else kind
-            require(kind in source_styles, "预览包含未知动作来源")
+            require(kind in source_styles, "The preview contains an unknown motion source")
             text, color = source_styles[kind]
             cv2.rectangle(canvas, (18, 652 + row * 30), (31, 672 + row * 30), color, -1)
             cv2.putText(canvas, side + ": " + text, (42, 669 + row * 30), cv2.FONT_HERSHEY_SIMPLEX, .5, color, 1, cv2.LINE_AA)
@@ -591,11 +592,11 @@ def build_preview(request_path):
         for index in range(count):
             check_cancel()
             ok, original = source.read()
-            require(ok and original is not None and list(original.shape[1::-1]) == capture["meta"]["resolution"], "原片缺帧或分辨率不符")
+            require(ok and original is not None and list(original.shape[1::-1]) == capture["meta"]["resolution"], "The source video has missing frames or an unexpected resolution")
             images = []
             for relative in (f"frame_{index:06d}.png", f"overview/frame_{index:06d}.png"):
                 image = cv2.imdecode(np.frombuffer((root / "UE_Frames" / relative).read_bytes(), np.uint8), cv2.IMREAD_COLOR)
-                require(image is not None and list(image.shape[1::-1]) == [render["width"], render["height"]], "UE PNG 无法解码或尺寸不符")
+                require(image is not None and list(image.shape[1::-1]) == [render["width"], render["height"]], "An Unreal PNG could not be decoded or has unexpected dimensions")
                 images.append(image)
             review = any(start <= index <= end for start, end in capture["quality"]["low_confidence_ranges"])
             label = f"Frame {index}/{count-1}" + (" | LOW CONFIDENCE - REVIEW" if review else " | Research draft")
@@ -622,9 +623,9 @@ def build_preview(request_path):
             writer.write(composed)
             if index in {0, count // 2, count - 1}:
                 ok, encoded = cv2.imencode(".jpg", composed, [cv2.IMWRITE_JPEG_QUALITY, 90])
-                require(ok, "关键预览帧编码失败")
+                require(ok, "A preview key frame could not be encoded")
                 (output / f"frame_{index:06d}.jpg").write_bytes(encoded.tobytes())
-        require(not source.read()[0], "原片存在未导出的额外帧")
+        require(not source.read()[0], "The source video contains additional frames that were not exported")
     finally:
         source.release()
         writer.release()
@@ -632,17 +633,17 @@ def build_preview(request_path):
     reader = cv2.VideoCapture(str(video_path))
     decoded = 0
     try:
-        require(reader.isOpened() and abs(reader.get(cv2.CAP_PROP_FPS) - fps) < 0.01, "预览无法重读或帧率不符")
+        require(reader.isOpened() and abs(reader.get(cv2.CAP_PROP_FPS) - fps) < 0.01, "The preview could not be reopened or has an unexpected frame rate")
         while True:
             check_cancel()
             ok, image = reader.read()
             if not ok:
                 break
-            require(image is not None and image.shape[:2] == (720, 3840), "预览画幅不符")
+            require(image is not None and image.shape[:2] == (720, 3840), "The preview has unexpected dimensions")
             decoded += 1
     finally:
         reader.release()
-    require(decoded == count, "预览完整重解码帧数不符")
+    require(decoded == count, "The fully decoded preview has an unexpected frame count")
     report = {"status": "passed", "path": str(video_path), "sha256": sha256(video_path), "decoded_frames": decoded,
               "fps": fps, "resolution": [3840, 720], "capture_sha256": sha256(capture_path),
               "source_video_sha256": sha256(video), "sequence_render_sha256": sha256(render_path),

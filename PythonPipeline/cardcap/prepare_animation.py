@@ -19,6 +19,7 @@ from smplx import MANOLayer
 from smplx.utils import Struct
 from smplx.vertex_ids import vertex_ids
 
+from . import __version__
 from .hand.mano_assets import load_mano_arrays
 from .hand.research_hands_glb import export_research_hands
 
@@ -566,7 +567,7 @@ def export_cardcap(observations_path, output_dir, *, view_id=None, bone_mapping_
         "meta": {"source_video": str(Path(view["source_video"])).replace("\\", "/"), "fps": data["meta"]["fps"],
             "frame_count": frame_count, "resolution": view["resolution"],
             "processed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "pipeline_version": "CardistryCapture 0.0.1",
+            "pipeline_version": f"CardistryCapture {__version__}",
             "source_video_sha256": source_video_hash, "source_observations_sha256": source_hash,
             "selected_view": view_id, "original_hand_observation_count": original_count,
             "animation_source_hand_observation_count": len(all_betas),

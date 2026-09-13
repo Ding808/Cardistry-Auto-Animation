@@ -38,10 +38,21 @@ def manifest() -> dict:
     return result
 
 
+def accepted_licenses(acceptance: dict, runtime_notice_hash: str, *,
+                      model_terms_commit: str = MODEL_TERMS_COMMIT) -> dict[str, bool]:
+    """Reuse consent when the applicable terms match, independently of release."""
+    return {
+        "runtime": (len(runtime_notice_hash) == 64 and
+                    acceptance.get("runtime_license_notice_sha256") == runtime_notice_hash),
+        "models": (acceptance.get("accepted_model_licenses") is True and
+                   acceptance.get("model_terms_commit") == model_terms_commit),
+    }
+
+
 def runtime_archive(path: Path | None, records: dict, *, extract: bool = True) -> list[Path]:
     if path is None:
         CACHE.mkdir(parents=True, exist_ok=True)
-        path = CACHE / "CardistryCapture-RuntimeDeps-v0.0.1.zip"
+        path = CACHE / f"CardistryCapture-RuntimeDeps-{records['release']}.zip"
         if not path.is_file():
             temporary = path.with_suffix(".zip.partial")
             print("Downloading the versioned runtime dependency archive...", flush=True)
@@ -201,21 +212,23 @@ def main() -> int:
         acceptance_path = CACHE / "license-acceptance.json"
         acceptance = json.loads(acceptance_path.read_text(encoding="utf-8-sig")) if acceptance_path.is_file() else {}
         runtime_notice_hash = digest(ROOT.parent / "ThirdParty/MSVC/README.md")
-        prior_runtime_acceptance = (acceptance.get("release") == records["release"] and
-                                    acceptance.get("runtime_license_notice_sha256") == runtime_notice_hash)
-        if not args.accepted_runtime_licenses and not prior_runtime_acceptance:
+        prior_acceptance = accepted_licenses(acceptance, runtime_notice_hash)
+        if not args.accepted_runtime_licenses and not prior_acceptance["runtime"]:
             raise PermissionError("Read the runtime distribution terms in ThirdParty/MSVC/README.md, then accept them through Scripts/Setup.cmd.")
-        prior_model_acceptance = (acceptance.get("accepted_model_licenses") is True and
-                                  acceptance.get("model_terms_commit") == MODEL_TERMS_COMMIT)
-        args.accepted_model_licenses = args.accepted_model_licenses or prior_model_acceptance
+        args.accepted_model_licenses = args.accepted_model_licenses or prior_acceptance["models"]
         if not args.runtime_only and not args.accepted_model_licenses:
             raise PermissionError("Model setup requires separately accepted licenses. Use Scripts/Setup.cmd, or choose --runtime-only.")
         CACHE.mkdir(parents=True, exist_ok=True)
+        accepted_at = datetime.now(timezone.utc).isoformat()
+        runtime_accepted_at = (acceptance.get("runtime_accepted_at_utc", accepted_at)
+                               if prior_acceptance["runtime"] else accepted_at)
         acceptance.update({"release": records["release"], "runtime_license_notice_sha256": runtime_notice_hash,
-                           "runtime_accepted_at_utc": acceptance.get("runtime_accepted_at_utc", datetime.now(timezone.utc).isoformat())})
+                           "runtime_accepted_at_utc": runtime_accepted_at})
         if args.accepted_model_licenses:
+            model_accepted_at = (acceptance.get("model_accepted_at_utc", accepted_at)
+                                 if prior_acceptance["models"] else accepted_at)
             acceptance.update({"accepted_model_licenses": True, "model_terms_commit": MODEL_TERMS_COMMIT,
-                               "model_accepted_at_utc": acceptance.get("model_accepted_at_utc", datetime.now(timezone.utc).isoformat())})
+                               "model_accepted_at_utc": model_accepted_at})
         acceptance_path.write_text(json.dumps(acceptance, indent=2) + "\n", encoding="utf-8")
         wheels = runtime_archive(args.runtime_archive, records)
         missing = [str(path) for path, record in zip(wheels, records["wheels"]) if not installed_wheel(record)]

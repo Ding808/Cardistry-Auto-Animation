@@ -17,6 +17,13 @@ $pluginRoot = Split-Path -Parent $PSScriptRoot
 $pipelineRoot = Join-Path $pluginRoot 'PythonPipeline'
 $venvPython = Join-Path $pipelineRoot '.venv\Scripts\python.exe'
 
+function Get-SavedLicenseAcceptance($LicenseRecord, [string]$RuntimeNoticeHash) {
+    return @{
+        Runtime = ($RuntimeNoticeHash.Length -eq 64 -and $LicenseRecord.runtime_license_notice_sha256 -eq $RuntimeNoticeHash)
+        Models = ($LicenseRecord.accepted_model_licenses -is [bool] -and $LicenseRecord.accepted_model_licenses -eq $true -and $LicenseRecord.model_terms_commit -eq 'fcb911312a38fa8badd30d9656a167485d61b8f9')
+    }
+}
+
 function Select-Asset([string]$Title, [string]$Filter) {
     Add-Type -AssemblyName System.Windows.Forms
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -39,10 +46,11 @@ try {
     if (-not $CheckOnly -and (Test-Path -LiteralPath $licenseRecordPath)) {
         $licenseRecord = Get-Content -LiteralPath $licenseRecordPath -Raw | ConvertFrom-Json
         $noticeHash = (Get-FileHash -LiteralPath $runtimeNoticePath -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($licenseRecord.release -eq 'v0.0.1' -and $licenseRecord.runtime_license_notice_sha256 -eq $noticeHash) {
+        $savedAcceptance = Get-SavedLicenseAcceptance $licenseRecord $noticeHash
+        if ($savedAcceptance.Runtime) {
             $AcceptedRuntimeLicenses = $true
         }
-        if ($licenseRecord.accepted_model_licenses -eq $true -and $licenseRecord.model_terms_commit -eq 'fcb911312a38fa8badd30d9656a167485d61b8f9') {
+        if ($savedAcceptance.Models) {
             $AcceptedModelLicenses = $true
         }
     }

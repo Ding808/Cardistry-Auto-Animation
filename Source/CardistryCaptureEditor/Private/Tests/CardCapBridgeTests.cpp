@@ -1,7 +1,14 @@
 #include "CardCapPythonBridge.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "SCardCapPanel.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Internationalization/Culture.h"
+#include "Internationalization/Internationalization.h"
+#include "Layout/Children.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/ScopeExit.h"
+#include "Widgets/Text/STextBlock.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCardCapStatusBoundaryTest, "CardistryCapture.Editor.JobStatusContract",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -13,6 +20,14 @@ bool FCardCapStatusBoundaryTest::RunTest(const FString& Parameters)
     FString Error;
     const FString Running = TEXT(R"({"schema_version":1,"job_id":"test","status":"running","stage":"reconstruct","progress":0.3,"elapsed_seconds":2,"frames_completed":4,"frames_total":12})");
     TestTrue(TEXT("Running status parses"), FCardCapPythonBridge::ParseStatus(Running, TEXT("test"), Snapshot, Error));
+    TestFalse(TEXT("Unmarked legacy status has no English message guarantee"), Snapshot.bMessagesAreEnglish);
+    const FString EnglishRunning = Running.Replace(TEXT("\"schema_version\":1"), TEXT("\"schema_version\":1,\"message_language\":\"en\""));
+    TestTrue(TEXT("English status marker parses"), FCardCapPythonBridge::ParseStatus(EnglishRunning, TEXT("test"), Snapshot, Error));
+    TestTrue(TEXT("Current English messages are identified"), Snapshot.bMessagesAreEnglish);
+    Snapshot.HistoricalError = TEXT("Previous error");
+    TestTrue(TEXT("An unmarked update remains compatible"), FCardCapPythonBridge::ParseStatus(Running, TEXT("test"), Snapshot, Error));
+    TestFalse(TEXT("An unmarked update does not inherit the previous language marker"), Snapshot.bMessagesAreEnglish);
+    TestTrue(TEXT("A new status update clears historical error presentation"), Snapshot.HistoricalError.IsEmpty());
     TestTrue(TEXT("Running state"), Snapshot.IsRunning());
     TestEqual(TEXT("Frame progress"), Snapshot.FramesCompleted, 4);
     TestEqual(TEXT("Output ownership remains in bridge"), Snapshot.OutputDirectory, FString(TEXT("C:/project/Saved/CardistryCapture/Runs/test")));
@@ -51,6 +66,81 @@ bool FCardCapArgumentBoundaryTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Trailing slash cannot escape closing quote"), FCardCapPythonBridge::QuoteArgument(TEXT("C:\\folder\\")), FString(TEXT("\"C:\\folder\\\\\"")));
     TestEqual(TEXT("Embedded quotes are argv data"), FCardCapPythonBridge::QuoteArgument(TEXT("a\"b")), FString(TEXT("\"a\\\"b\"")));
     TestEqual(TEXT("Empty argv preserved"), FCardCapPythonBridge::QuoteArgument(TEXT("")), FString(TEXT("\"\"")));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCardCapEnglishPanelTest, "CardistryCapture.Editor.EnglishPanelUnderChineseCulture",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCardCapEnglishPanelTest::RunTest(const FString& Parameters)
+{
+    if (!TestTrue(TEXT("Slate is initialized"), FSlateApplication::IsInitialized())) { return false; }
+    FInternationalization& Internationalization = FInternationalization::Get();
+    const FString PreviousLanguage = Internationalization.GetCurrentLanguage()->GetName();
+    const FString PreviousLocale = Internationalization.GetCurrentLocale()->GetName();
+    ON_SCOPE_EXIT
+    {
+        Internationalization.SetCurrentLanguage(PreviousLanguage);
+        Internationalization.SetCurrentLocale(PreviousLocale);
+    };
+    if (!TestTrue(TEXT("Chinese editor culture is available"), Internationalization.SetCurrentLanguageAndLocale(TEXT("zh-Hans"))))
+    { return false; }
+
+    // Inspect the real Slate widgets without starting a worker or changing any job.
+    const TSharedRef<SCardCapPanel> Panel = SNew(SCardCapPanel);
+    TArray<FString> Labels;
+    TFunction<void(const TSharedRef<SWidget>&)> CollectLabels = [&](const TSharedRef<SWidget>& Widget)
+    {
+        if (Widget->GetType() == FName(TEXT("STextBlock")))
+        {
+            Labels.Add(StaticCastSharedRef<STextBlock>(Widget)->GetText().ToString());
+        }
+        FChildren* Children = Widget->GetChildren();
+        for (int32 Index = 0; Children && Index < Children->Num(); ++Index)
+        {
+            CollectLabels(Children->GetChildAt(Index));
+        }
+    };
+    CollectLabels(Panel);
+    for (const TCHAR* Expected : {
+        TEXT("Cardistry Capture"), TEXT("Source Video"), TEXT("Choose Video..."),
+        TEXT("Start Processing"), TEXT("Cancel Processing"), TEXT("Results"),
+        TEXT("Open Scene"), TEXT("Open Animation"), TEXT("Preview Video"),
+        TEXT("Result Folder"), TEXT("View Log"), TEXT("Advanced Settings"), TEXT("Ready")})
+    {
+        TestTrue(FString::Printf(TEXT("English panel label under zh-Hans: %s"), Expected), Labels.Contains(FString(Expected)));
+    }
+
+    FString Error;
+    TestFalse(TEXT("Unavailable service does not start processing"), Panel->StartProcessing(Error));
+    TestEqual(TEXT("Panel validation error is English"), Error,
+        FString(TEXT("The processing service is not ready. Open this panel again.")));
+    Labels.Reset();
+    CollectLabels(Panel);
+    TestTrue(TEXT("The actual panel displays the English validation error"), Labels.Contains(Error));
+    TestTrue(TEXT("The actual panel displays the English failure state"), Labels.Contains(TEXT("Processing Incomplete")));
+
+    FCardCapJobSnapshot Saved;
+    Saved.Message = TEXT("\u5904\u7406\u5b8c\u6210"); // A message saved by the previous release.
+    Saved.Status = TEXT("succeeded");
+    TestEqual(TEXT("A saved success message uses English presentation"), SCardCapPanel::JobMessageText(Saved).ToString(),
+        FString(TEXT("Processing is complete. Open the scene or preview video to review the result.")));
+    Saved.Status = TEXT("cancelled");
+    TestEqual(TEXT("A saved cancellation uses English presentation"), SCardCapPanel::JobMessageText(Saved).ToString(),
+        FString(TEXT("Cancelled. Existing files remain in the result folder.")));
+    Saved.Status = TEXT("idle");
+    TestTrue(TEXT("An idle job does not display a stale saved message"), SCardCapPanel::JobMessageText(Saved).IsEmpty());
+    Saved.Status = TEXT("failed");
+    Saved.Error = TEXT("\u91cd\u5efa\u5931\u8d25");
+    Saved.HistoricalError = Saved.Error;
+    const FString OriginalError = Saved.Error;
+    TestEqual(TEXT("An unmarked restored error points to its original details in English"), SCardCapPanel::JobMessageText(Saved).ToString(),
+        FString(TEXT("This saved job reported an error in an earlier version. Check View Log and status.json in the Result Folder for the original details.")));
+    TestEqual(TEXT("The raw historical error is preserved"), Saved.Error, OriginalError);
+    Saved.Error = TEXT("Could not read C:/\u672c\u673a \u89c6\u9891/take 01.mp4");
+    TestEqual(TEXT("A new English error keeps its complete Unicode path"), SCardCapPanel::JobMessageText(Saved).ToString(), Saved.Error);
+    Saved.HistoricalError.Empty();
+    TestEqual(TEXT("A current or marked restored error remains verbatim"), SCardCapPanel::JobMessageText(Saved).ToString(), Saved.Error);
     return true;
 }
 #endif

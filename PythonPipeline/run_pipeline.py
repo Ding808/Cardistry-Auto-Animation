@@ -14,6 +14,7 @@ import time
 import cv2
 import numpy as np
 
+from cardcap import __version__
 from cardcap.export import OBSERVATIONS_VERSION, atomic_json, serialize_hand, summarize_frames
 from cardcap.hand.base import EstimatorUnavailable
 from cardcap.ingest import VideoView, load_views, source_frame_for_time
@@ -148,7 +149,7 @@ def run(args) -> int:
                 "frame_count_requested": total,
                 "full_source_video_requested": total == primary.frame_count,
                 "created_at": datetime.now(timezone.utc).isoformat(),
-                "pipeline_version": "CardistryCapture 0.0.1",
+                "pipeline_version": f"CardistryCapture {__version__}",
                 "backend": args.backend,
                 "views": [dict(view.metadata, source_sha256=sha256_file(view.spec.video),
                                backend_info=estimators[view_id].backend_info)

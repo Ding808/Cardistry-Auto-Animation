@@ -75,9 +75,9 @@ FString FCardCapPythonBridge::QuoteArgument(const FString& Value)
 
 bool FCardCapPythonBridge::Start(const FCardCapJobOptions& Options, FString& OutError)
 {
-    if (!CanStart()) { OutError = TEXT("当前任务尚未停止，请稍候。"); return false; }
+    if (!CanStart()) { OutError = TEXT("The current job is still stopping. Please wait."); return false; }
     const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CardistryCapture"));
-    if (!Plugin) { OutError = TEXT("未找到花切插件目录。"); return false; }
+    if (!Plugin) { OutError = TEXT("The Cardistry Capture plugin folder could not be found."); return false; }
     const FString PluginDir = Absolute(Plugin->GetBaseDir());
     const FString PythonDir = PluginDir / TEXT("PythonPipeline");
     const FString Python = PythonDir / TEXT(".venv/Scripts/python.exe");
@@ -88,13 +88,13 @@ bool FCardCapPythonBridge::Start(const FCardCapJobOptions& Options, FString& Out
     const FString Mapping = Options.BoneMappingPath.IsEmpty()
         ? PluginDir / TEXT("Config/BoneMapping_UE5Mannequin.json") : Absolute(Options.BoneMappingPath);
     if (Video.IsEmpty() || !FPaths::FileExists(Video))
-    { OutError = TEXT("请选择本机存在的视频文件。"); return false; }
+    { OutError = TEXT("Choose a video file that exists on this computer."); return false; }
     if (!FPaths::FileExists(Python) || !FPaths::FileExists(Script))
-    { OutError = TEXT("处理环境尚未准备好，请先完成插件的 Python 环境安装。"); return false; }
+    { OutError = TEXT("The processing environment is not ready. Run Scripts/Setup.cmd in the plugin folder first."); return false; }
     if (!FPaths::FileExists(Project) || !FPaths::FileExists(Editor))
-    { OutError = TEXT("未找到当前工程或 UE 后台程序，请从已保存的工程打开面板。"); return false; }
+    { OutError = TEXT("The current project or Unreal background executable could not be found. Open this panel from a saved project."); return false; }
     if (!FPaths::FileExists(Mapping))
-    { OutError = TEXT("骨骼映射文件不存在，请在高级选项中重新选择。"); return false; }
+    { OutError = TEXT("The bone mapping file does not exist. Choose it again in Advanced Settings."); return false; }
 
     Snapshot = FCardCapJobSnapshot();
     Snapshot.JobId = TEXT("Take_") + FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S_")) + FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(8);
@@ -102,9 +102,9 @@ bool FCardCapPythonBridge::Start(const FCardCapJobOptions& Options, FString& Out
     Snapshot.LogPath = Snapshot.OutputDirectory / TEXT("job.log");
     Snapshot.Status = TEXT("running");
     Snapshot.Stage = TEXT("preflight");
-    Snapshot.Message = TEXT("正在检查视频和处理环境…");
+    Snapshot.Message = TEXT("Checking the video and processing environment...");
     if (!IFileManager::Get().MakeDirectory(*Snapshot.OutputDirectory, true))
-    { OutError = TEXT("无法创建本次结果目录，请检查工程目录的写入权限。"); Fail(OutError); return false; }
+    { OutError = TEXT("The result folder could not be created. Check that the project folder is writable."); Fail(OutError); return false; }
     TSharedRef<FJsonObject> Request = MakeShared<FJsonObject>();
     Request->SetNumberField(TEXT("schema_version"), 1);
     Request->SetStringField(TEXT("job_id"), Snapshot.JobId);
@@ -118,7 +118,7 @@ bool FCardCapPythonBridge::Start(const FCardCapJobOptions& Options, FString& Out
     Request->SetBoolField(TEXT("render_preview"), Options.bRenderPreview);
     const FString RequestFile = Snapshot.OutputDirectory / TEXT("request.json");
     if (!WriteJson(RequestFile, Request))
-    { OutError = TEXT("无法保存本次处理设置。"); Fail(OutError); return false; }
+    { OutError = TEXT("The processing settings could not be saved."); Fail(OutError); return false; }
     bCancelRequested = false;
     StartedAt = FPlatformTime::Seconds();
     LastPoll = 0;
@@ -126,7 +126,7 @@ bool FCardCapPythonBridge::Start(const FCardCapJobOptions& Options, FString& Out
     Process = FPlatformProcess::CreateProc(*Python, *Arguments, false, true, true,
         &ProcessId, 0, *PythonDir, nullptr);
     if (!Process.IsValid())
-    { OutError = TEXT("无法启动后台处理程序，请查看环境安装状态。"); Fail(OutError); SaveTerminalStatus(); return false; }
+    { OutError = TEXT("The background processor could not be started. Check the setup status."); Fail(OutError); SaveTerminalStatus(); return false; }
     TSharedRef<FJsonObject> Last = MakeShared<FJsonObject>();
     Last->SetStringField(TEXT("job_id"), Snapshot.JobId);
     Last->SetStringField(TEXT("output_dir"), Snapshot.OutputDirectory);
@@ -153,6 +153,10 @@ bool FCardCapPythonBridge::ParseStatus(const FString& Json, const FString& Expec
     Next.JobId = Job; Next.Status = Status; Next.Progress = Progress; Next.ElapsedSeconds = Elapsed;
     Root->TryGetStringField(TEXT("stage"), Next.Stage);
     Root->TryGetStringField(TEXT("message"), Next.Message);
+    FString MessageLanguage;
+    Root->TryGetStringField(TEXT("message_language"), MessageLanguage);
+    Next.bMessagesAreEnglish = MessageLanguage == TEXT("en");
+    Next.HistoricalError.Empty();
     double Frames = 0, Total = 0;
     if (FiniteNumber(Root, TEXT("frames_completed"), Frames) && Frames >= 0 && Frames <= MAX_int32)
         Next.FramesCompleted = static_cast<int32>(Frames);
@@ -222,14 +226,14 @@ bool FCardCapPythonBridge::ValidateResults(FString& OutError) const
     {
         const FString Package = FPackageName::ObjectPathToPackageName(*Asset);
         if (!Package.StartsWith(Prefix) || !FPackageName::IsValidLongPackageName(Package))
-        { OutError = TEXT("输出资产没有对应本次任务，已停止打开。"); return false; }
+        { OutError = TEXT("The output asset does not belong to this job and cannot be opened."); return false; }
         const FString Extension = Asset == &Snapshot.MapAsset ? FPackageName::GetMapPackageExtension() : FPackageName::GetAssetPackageExtension();
         if (!FPaths::FileExists(FPackageName::LongPackageNameToFilename(Package, Extension)))
-        { OutError = TEXT("结果文件未完整保存，请查看任务日志。"); return false; }
+        { OutError = TEXT("The result files are incomplete. Check the job log."); return false; }
     }
     if (!FPaths::IsUnderDirectory(Snapshot.CaptureFile, Snapshot.OutputDirectory) || !FPaths::FileExists(Snapshot.CaptureFile)
         || (!Snapshot.PreviewVideo.IsEmpty() && (!FPaths::IsUnderDirectory(Snapshot.PreviewVideo, Snapshot.OutputDirectory) || !FPaths::FileExists(Snapshot.PreviewVideo))))
-    { OutError = TEXT("处理结果路径异常或文件缺失。"); return false; }
+    { OutError = TEXT("The result path is invalid or a required file is missing."); return false; }
     return true;
 }
 
@@ -244,7 +248,7 @@ void FCardCapPythonBridge::Tick(float DeltaTime)
     Snapshot.ElapsedSeconds = Now - StartedAt;
     if (bCancelRequested)
     {
-        Snapshot.Status = TEXT("cancelling"); Snapshot.Message = TEXT("正在停止本次处理…");
+        Snapshot.Status = TEXT("cancelling"); Snapshot.Message = TEXT("Stopping this job...");
         if (Now - CancelledAt > 5.0 && FPlatformProcess::IsProcRunning(Process))
             FPlatformProcess::TerminateProc(Process, true);
     }
@@ -261,13 +265,13 @@ void FCardCapPythonBridge::Tick(float DeltaTime)
     if (bCancelRequested)
     {
         // Windows TerminateProcess uses exit code 0. Local cancel intent wins.
-        Snapshot.Status = TEXT("cancelled"); Snapshot.Message = TEXT("已取消。已有文件保留在本次结果目录。");
+        Snapshot.Status = TEXT("cancelled"); Snapshot.Message = TEXT("Cancelled. Existing files remain in the result folder.");
         SaveTerminalStatus();
     }
     else if (!bValidStatus || Code != 0 || Snapshot.Status != TEXT("succeeded"))
     {
         if (Snapshot.Status != TEXT("cancelled"))
-            Fail(Snapshot.Error.IsEmpty() ? TEXT("处理没有完成，请打开日志查看原因后重试。") : Snapshot.Error);
+            Fail(Snapshot.Error.IsEmpty() ? TEXT("Processing did not complete. Check the log before trying again.") : Snapshot.Error);
         SaveTerminalStatus();
     }
     else
@@ -291,7 +295,7 @@ void FCardCapPythonBridge::Cancel()
     if (!Process.IsValid() || bCancelRequested) return;
     bCancelRequested = true; CancelledAt = FPlatformTime::Seconds();
     FFileHelper::SaveStringToFile(TEXT("cancel\n"), *(Snapshot.OutputDirectory / TEXT("cancel.request")));
-    Snapshot.Status = TEXT("cancelling"); Snapshot.Message = TEXT("正在停止本次处理…");
+    Snapshot.Status = TEXT("cancelling"); Snapshot.Message = TEXT("Stopping this job...");
 }
 
 void FCardCapPythonBridge::Fail(const FString& Message)
@@ -308,6 +312,7 @@ void FCardCapPythonBridge::SaveTerminalStatus()
     Root->SetStringField(TEXT("status"), Snapshot.Status);
     Root->SetStringField(TEXT("stage"), Snapshot.Stage);
     Root->SetStringField(TEXT("message"), Snapshot.Message);
+    Root->SetStringField(TEXT("message_language"), TEXT("en"));
     Root->SetNumberField(TEXT("progress"), Snapshot.Progress);
     Root->SetNumberField(TEXT("elapsed_seconds"), Snapshot.ElapsedSeconds);
     TSharedRef<FJsonObject> Error = MakeShared<FJsonObject>();
@@ -326,7 +331,7 @@ void FCardCapPythonBridge::Shutdown()
         Cancel();
         FPlatformProcess::TerminateProc(Process, true);
         FPlatformProcess::CloseProc(Process); ProcessId = 0;
-        Snapshot.Status = TEXT("cancelled"); Snapshot.Message = TEXT("编辑器已关闭，本次任务已停止。");
+        Snapshot.Status = TEXT("cancelled"); Snapshot.Message = TEXT("The editor closed and this job was stopped.");
         SaveTerminalStatus();
     }
     PendingSequenceAsset.Empty(); bShuttingDown = true;
@@ -343,7 +348,8 @@ void FCardCapPythonBridge::RestoreLastJob()
         || !FPaths::IsUnderDirectory(Output, JobsRoot()) || FPaths::GetCleanFilename(Output) != Job) return;
     Snapshot.JobId = Job; Snapshot.OutputDirectory = Output; Snapshot.LogPath = Output / TEXT("job.log");
     if (!ReadStatus()) { Snapshot = FCardCapJobSnapshot(); return; }
-    if (Snapshot.IsRunning()) Fail(TEXT("上次处理未正常结束，请查看日志或开始新任务。"));
+    if (!Snapshot.bMessagesAreEnglish) { Snapshot.HistoricalError = Snapshot.Error; }
+    if (Snapshot.IsRunning()) Fail(TEXT("The previous job ended unexpectedly. Check the log or start a new job."));
     else if (Snapshot.Status == TEXT("succeeded"))
     {
         FString Error;
@@ -369,11 +375,11 @@ void FCardCapPythonBridge::OpenResultScene()
     TArray<UPackage*> UnsavedMaps;
     FEditorFileUtils::GetDirtyWorldPackages(UnsavedMaps);
     FEditorFileUtils::GetDirtyContentPackages(UnsavedMaps);
-    if (!UnsavedMaps.IsEmpty()) { Snapshot.Error = TEXT("当前工程仍有未保存修改，已保留当前场景。"); return; }
+    if (!UnsavedMaps.IsEmpty()) { Snapshot.Error = TEXT("The project has unsaved changes. The current scene has been kept open."); return; }
     RefreshResultAssets();
     const FString Package = FPackageName::ObjectPathToPackageName(Snapshot.MapAsset);
     if (!FEditorFileUtils::LoadMap(FPackageName::LongPackageNameToFilename(Package, FPackageName::GetMapPackageExtension())))
-    { Snapshot.Error = TEXT("无法打开结果场景，请查看编辑器日志。"); return; }
+    { Snapshot.Error = TEXT("The result scene could not be opened. Check the editor log."); return; }
     UObject* Sequence = LoadObject<ULevelSequence>(nullptr, *ObjectPath(Snapshot.SequenceAsset));
     if (Sequence && GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(Sequence))
     { PendingSequenceAsset = ObjectPath(Snapshot.SequenceAsset); PendingSequenceTicks = 0; }
@@ -383,7 +389,7 @@ void FCardCapPythonBridge::SeekOpenedSequence()
 {
     if (!GEditor || ++PendingSequenceTicks > 120)
     {
-        Snapshot.Error = TEXT("结果场景已载入，但未能准备查看视口，请重新打开场景。");
+        Snapshot.Error = TEXT("The result scene loaded, but its viewport could not be prepared. Open the scene again.");
         PendingSequenceAsset.Empty(); return;
     }
     ULevelSequence* Sequence = FindObject<ULevelSequence>(nullptr, *PendingSequenceAsset);
@@ -402,7 +408,7 @@ void FCardCapPythonBridge::SeekOpenedSequence()
     }
     if (!DisplayCamera)
     {
-        Snapshot.Error = TEXT("结果场景缺少用于查看的相机，请重新生成结果。");
+        Snapshot.Error = TEXT("The result scene has no preview camera. Generate the result again.");
         PendingSequenceAsset.Empty(); return;
     }
     FLevelEditorViewportClient* ResultViewport = nullptr;
@@ -439,7 +445,7 @@ void FCardCapPythonBridge::OpenResultAnimation()
 {
     if (Snapshot.Status != TEXT("succeeded") || !GEditor) return;
     if (Snapshot.IsPerHandLocal())
-    { Snapshot.Error = TEXT("双手相对位置未知，请查看左右手局部预览。"); return; }
+    { Snapshot.Error = TEXT("The relative hand positions are unknown. Review the separate left and right hand previews."); return; }
     RefreshResultAssets();
     GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(Snapshot.AnimationAsset);
 }

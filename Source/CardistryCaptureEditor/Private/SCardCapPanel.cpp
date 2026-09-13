@@ -113,26 +113,26 @@ void SCardCapPanel::Construct(const FArguments& InArgs)
         [
             SNew(SVerticalBox)
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 7)
-            [ SNew(STextBlock).Text(LOCTEXT("Title", "花切动作捕获"))
+            [ SNew(STextBlock).Text(LOCTEXT("Title", "Cardistry Capture"))
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 22)) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 18)
-            [ SNew(STextBlock).Text(LOCTEXT("Introduction", "选择一段视频，生成可在编辑器中查看的双手动作。"))
+            [ SNew(STextBlock).Text(LOCTEXT("Introduction", "Choose a video to generate hand motion for review in the editor."))
                 .AutoWrapText(true).ColorAndOpacity(FLinearColor(.7f, .73f, .78f)) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-            [ SNew(STextBlock).Text(LOCTEXT("VideoLabel", "源视频")) ]
+            [ SNew(STextBlock).Text(LOCTEXT("VideoLabel", "Source Video")) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 14)
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().FillWidth(1.f)
                 [ SNew(SEditableTextBox).Tag(TEXT("CardCap.VideoPath"))
-                    .HintText(LOCTEXT("VideoHint", "选择视频，或粘贴完整路径"))
+                    .HintText(LOCTEXT("VideoHint", "Choose a video or paste its full path"))
                     .Text_Lambda([this] { return FText::FromString(VideoPath); })
                     .IsReadOnly_Lambda([this] { return !CanEdit(); })
                     .OnTextChanged_Lambda([this](const FText& Text) { if (CanEdit()) { VideoPath = Text.ToString(); LocalError.Reset(); } }) ]
                 + SHorizontalBox::Slot().AutoWidth().Padding(8, 0, 0, 0)
                 [ SNew(SButton).Tag(TEXT("CardCap.BrowseVideo"))
-                    .Text(LOCTEXT("BrowseVideo", "选择视频…"))
+                    .Text(LOCTEXT("BrowseVideo", "Choose Video..."))
                     .IsEnabled_Lambda([this] { return CanEdit(); })
                     .OnClicked(this, &SCardCapPanel::BrowseVideo) ]
             ]
@@ -141,13 +141,13 @@ void SCardCapPanel::Construct(const FArguments& InArgs)
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().AutoWidth()
                 [ SNew(SButton).Tag(TEXT("CardCap.Start"))
-                    .Text(LOCTEXT("Start", "开始处理"))
+                    .Text(LOCTEXT("Start", "Start Processing"))
                     .ContentPadding(FMargin(24, 8))
                     .IsEnabled_Lambda([this] { return Bridge.IsValid() && Bridge->CanStart() && !CleanPath(VideoPath).IsEmpty(); })
                     .OnClicked(this, &SCardCapPanel::OnStartClicked) ]
                 + SHorizontalBox::Slot().AutoWidth().Padding(8, 0, 0, 0)
                 [ SNew(SButton).Tag(TEXT("CardCap.Cancel"))
-                    .Text(LOCTEXT("Cancel", "取消处理"))
+                    .Text(LOCTEXT("Cancel", "Cancel Processing"))
                     .ContentPadding(FMargin(18, 8))
                     .IsEnabled_Lambda([this] { return IsRunning() && Snapshot().Status != TEXT("cancelling"); })
                     .OnClicked(this, &SCardCapPanel::OnCancelClicked) ]
@@ -177,45 +177,45 @@ void SCardCapPanel::Construct(const FArguments& InArgs)
                 .ColorAndOpacity_Lambda([this] { return FSlateColor((!LocalError.IsEmpty() || !Snapshot().Error.IsEmpty())
                     ? FLinearColor(1.f, .42f, .32f) : FLinearColor(.7f, .73f, .78f)); }) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 16)
-            [ SNew(STextBlock).Text(LOCTEXT("CloseNote", "关闭此面板不会中断处理。"))
+            [ SNew(STextBlock).Text(LOCTEXT("CloseNote", "Closing this panel will not interrupt processing."))
                 .ColorAndOpacity(FLinearColor(.55f, .59f, .65f)) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 14)
             [ SNew(SSeparator) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
-            [ SNew(STextBlock).Text(LOCTEXT("Results", "处理结果"))
+            [ SNew(STextBlock).Text(LOCTEXT("Results", "Results"))
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 14)) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
             [
                 SNew(SWrapBox).UseAllottedSize(true).InnerSlotPadding(FVector2D(8, 8))
                 + SWrapBox::Slot()
-                [ SNew(SButton).Tag(TEXT("CardCap.OpenResult")).Text(LOCTEXT("OpenScene", "打开场景"))
+                [ SNew(SButton).Tag(TEXT("CardCap.OpenResult")).Text(LOCTEXT("OpenScene", "Open Scene"))
                     .IsEnabled_Lambda([this] { return Bridge.IsValid() && Snapshot().Status == TEXT("succeeded") && !Snapshot().MapAsset.IsEmpty(); })
                     .OnClicked_Lambda([this] { if (Bridge.IsValid()) { Bridge->OpenResultScene(); } return FReply::Handled(); }) ]
                 + SWrapBox::Slot()
-                [ SNew(SButton).Tag(TEXT("CardCap.OpenAnimation")).Text(LOCTEXT("OpenAnimation", "打开动画"))
+                [ SNew(SButton).Tag(TEXT("CardCap.OpenAnimation")).Text(LOCTEXT("OpenAnimation", "Open Animation"))
                     .IsEnabled_Lambda([this] { return Bridge.IsValid() && Snapshot().Status == TEXT("succeeded") && !Snapshot().AnimationAsset.IsEmpty() && !Snapshot().IsPerHandLocal(); })
                     .ToolTipText_Lambda([this] { return Snapshot().IsPerHandLocal()
-                        ? LOCTEXT("LocalAnimationUnavailable", "双手相对位置未知，请查看左右手局部预览。") : FText::GetEmpty(); })
+                        ? LOCTEXT("LocalAnimationUnavailable", "The relative hand positions are unknown. Review the separate left and right hand previews.") : FText::GetEmpty(); })
                     .OnClicked_Lambda([this] { if (Bridge.IsValid()) { Bridge->OpenResultAnimation(); } return FReply::Handled(); }) ]
                 + SWrapBox::Slot()
-                [ SNew(SButton).Tag(TEXT("CardCap.Preview")).Text(LOCTEXT("OpenPreview", "预览视频"))
+                [ SNew(SButton).Tag(TEXT("CardCap.Preview")).Text(LOCTEXT("OpenPreview", "Preview Video"))
                     .IsEnabled_Lambda([this] { return Bridge.IsValid() && Snapshot().Status == TEXT("succeeded") && !Snapshot().PreviewVideo.IsEmpty(); })
                     .OnClicked_Lambda([this] { if (Bridge.IsValid()) { Bridge->OpenPreview(); } return FReply::Handled(); }) ]
                 + SWrapBox::Slot()
-                [ SNew(SButton).Tag(TEXT("CardCap.OpenFolder")).Text(LOCTEXT("OpenFolder", "结果文件夹"))
+                [ SNew(SButton).Tag(TEXT("CardCap.OpenFolder")).Text(LOCTEXT("OpenFolder", "Result Folder"))
                     .IsEnabled_Lambda([this] { return Bridge.IsValid() && !Snapshot().OutputDirectory.IsEmpty(); })
                     .OnClicked_Lambda([this] { if (Bridge.IsValid()) { Bridge->OpenOutputFolder(); } return FReply::Handled(); }) ]
                 + SWrapBox::Slot()
-                [ SNew(SButton).Tag(TEXT("CardCap.OpenLog")).Text(LOCTEXT("OpenLog", "查看日志"))
+                [ SNew(SButton).Tag(TEXT("CardCap.OpenLog")).Text(LOCTEXT("OpenLog", "View Log"))
                     .IsEnabled_Lambda([this] { return Bridge.IsValid() && !Snapshot().LogPath.IsEmpty(); })
                     .OnClicked_Lambda([this] { if (Bridge.IsValid()) { Bridge->OpenLog(); } return FReply::Handled(); }) ]
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 7)
-            [ SNew(STextBlock).Text(LOCTEXT("ReviewRanges", "黄色区段建议复核")) ]
+            [ SNew(STextBlock).Text(LOCTEXT("ReviewRanges", "Review the yellow sections")) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 7)
             [ SNew(SCardCapConfidenceBar).Tag(TEXT("CardCap.ConfidenceBar")).Bridge(Bridge)
-                .ToolTipText(LOCTEXT("ReviewTooltip", "黄色表示结果中标记的低置信度区段；其余区段不代表已经人工验证。")) ]
+                .ToolTipText(LOCTEXT("ReviewTooltip", "Yellow marks sections flagged as low confidence. Other sections have not necessarily been manually verified.")) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
             [ SNew(STextBlock).Text(this, &SCardCapPanel::ConfidenceRangesText).AutoWrapText(true) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 18)
@@ -226,23 +226,23 @@ void SCardCapPanel::Construct(const FArguments& InArgs)
             [
                 SNew(SExpandableArea).InitiallyCollapsed(true)
                 .HeaderContent()
-                [ SNew(STextBlock).Text(LOCTEXT("Advanced", "高级设置")) ]
+                [ SNew(STextBlock).Text(LOCTEXT("Advanced", "Advanced Settings")) ]
                 .BodyContent()
                 [
                     SNew(SVerticalBox)
                     + SVerticalBox::Slot().AutoHeight().Padding(8, 12, 8, 5)
-                    [ SNew(STextBlock).Text(LOCTEXT("MappingLabel", "骨骼映射文件（可选）")) ]
+                    [ SNew(STextBlock).Text(LOCTEXT("MappingLabel", "Bone Mapping File (Optional)")) ]
                     + SVerticalBox::Slot().AutoHeight().Padding(8, 0, 8, 10)
                     [
                         SNew(SHorizontalBox)
                         + SHorizontalBox::Slot().FillWidth(1.f)
                         [ SNew(SEditableTextBox).Tag(TEXT("CardCap.BoneMapping"))
-                            .HintText(LOCTEXT("DefaultMapping", "留空时使用默认映射"))
+                            .HintText(LOCTEXT("DefaultMapping", "Leave blank to use the default mapping"))
                             .Text_Lambda([this] { return FText::FromString(BoneMappingPath); })
                             .IsReadOnly_Lambda([this] { return !CanEdit(); })
                             .OnTextChanged_Lambda([this](const FText& Text) { if (CanEdit()) { BoneMappingPath = Text.ToString(); } }) ]
                         + SHorizontalBox::Slot().AutoWidth().Padding(8, 0, 0, 0)
-                        [ SNew(SButton).Text(LOCTEXT("BrowseMapping", "浏览…"))
+                        [ SNew(SButton).Text(LOCTEXT("BrowseMapping", "Browse..."))
                             .IsEnabled_Lambda([this] { return CanEdit(); })
                             .OnClicked(this, &SCardCapPanel::BrowseBoneMapping) ]
                     ]
@@ -251,13 +251,13 @@ void SCardCapPanel::Construct(const FArguments& InArgs)
                         .IsEnabled_Lambda([this] { return CanEdit(); })
                         .IsChecked_Lambda([this] { return bAllowBlurry ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
                         .OnCheckStateChanged_Lambda([this](ECheckBoxState State) { bAllowBlurry = State == ECheckBoxState::Checked; })
-                        [ SNew(STextBlock).Text(LOCTEXT("AllowBlurry", "允许模糊视频生成草稿")) ] ]
+                        [ SNew(STextBlock).Text(LOCTEXT("AllowBlurry", "Allow drafts from blurry video")) ] ]
                     + SVerticalBox::Slot().AutoHeight().Padding(8, 0, 8, 8)
                     [ SNew(SCheckBox).Tag(TEXT("CardCap.RenderPreview"))
                         .IsEnabled_Lambda([this] { return CanEdit(); })
                         .IsChecked_Lambda([this] { return bRenderPreview ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
                         .OnCheckStateChanged_Lambda([this](ECheckBoxState State) { bRenderPreview = State == ECheckBoxState::Checked; })
-                        [ SNew(STextBlock).Text(LOCTEXT("RenderPreview", "生成对照视频")) ] ]
+                        [ SNew(STextBlock).Text(LOCTEXT("RenderPreview", "Generate a comparison video")) ] ]
                 ]
             ]
         ]
@@ -287,15 +287,15 @@ bool SCardCapPanel::StartProcessing(FString& OutError)
     OutError.Reset();
     if (!Bridge.IsValid())
     {
-        OutError = LOCTEXT("NoBridge", "处理服务尚未就绪，请重新打开面板。").ToString();
+        OutError = LOCTEXT("NoBridge", "The processing service is not ready. Open this panel again.").ToString();
     }
     else if (!Bridge->CanStart())
     {
-        OutError = LOCTEXT("AlreadyRunning", "当前视频仍在处理中，请等待完成或先取消。").ToString();
+        OutError = LOCTEXT("AlreadyRunning", "This video is still processing. Wait for it to finish or cancel it first.").ToString();
     }
     else if (CleanPath(VideoPath).IsEmpty())
     {
-        OutError = LOCTEXT("ChooseFirst", "请先选择一段视频。").ToString();
+        OutError = LOCTEXT("ChooseFirst", "Choose a video first.").ToString();
     }
     else
     {
@@ -312,7 +312,7 @@ bool SCardCapPanel::StartProcessing(FString& OutError)
         }
         if (OutError.IsEmpty())
         {
-            OutError = LOCTEXT("CouldNotStart", "未能开始处理，请查看日志。").ToString();
+            OutError = LOCTEXT("CouldNotStart", "Processing could not be started. Check the log.").ToString();
         }
     }
     LocalError = OutError;
@@ -337,7 +337,7 @@ bool SCardCapPanel::ChooseFile(const FText& Title, const FString& Filter, const 
     IDesktopPlatform* Desktop = FDesktopPlatformModule::Get();
     if (!Desktop)
     {
-        LocalError = LOCTEXT("NoFileDialog", "无法打开文件选择窗口，可直接粘贴文件路径。").ToString();
+        LocalError = LOCTEXT("NoFileDialog", "The file picker could not be opened. Paste the full file path instead.").ToString();
         return false;
     }
     const TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(AsShared());
@@ -359,8 +359,8 @@ FReply SCardCapPanel::BrowseVideo()
     if (CanEdit())
     {
         FString Selected;
-        if (ChooseFile(LOCTEXT("ChooseVideoDialog", "选择花切视频"),
-            TEXT("视频文件 (*.mp4;*.mov;*.m4v;*.avi;*.mkv)|*.mp4;*.mov;*.m4v;*.avi;*.mkv"), VideoPath, Selected))
+        if (ChooseFile(LOCTEXT("ChooseVideoDialog", "Choose a Cardistry Video"),
+            TEXT("Video Files (*.mp4;*.mov;*.m4v;*.avi;*.mkv)|*.mp4;*.mov;*.m4v;*.avi;*.mkv"), VideoPath, Selected))
         {
             SetVideoPath(Selected);
         }
@@ -373,7 +373,7 @@ FReply SCardCapPanel::BrowseBoneMapping()
     if (CanEdit())
     {
         FString Selected;
-        if (ChooseFile(LOCTEXT("ChooseMappingDialog", "选择骨骼映射文件"), TEXT("JSON 文件 (*.json)|*.json"), BoneMappingPath, Selected))
+        if (ChooseFile(LOCTEXT("ChooseMappingDialog", "Choose a Bone Mapping File"), TEXT("JSON Files (*.json)|*.json"), BoneMappingPath, Selected))
         {
             BoneMappingPath = Selected;
         }
@@ -384,27 +384,48 @@ FReply SCardCapPanel::BrowseBoneMapping()
 FText SCardCapPanel::StatusText() const
 {
     const FCardCapJobSnapshot& State = Snapshot();
-    if (!LocalError.IsEmpty() || State.Status == TEXT("failed")) { return LOCTEXT("Failed", "处理未完成"); }
-    if (State.Status == TEXT("cancelling")) { return LOCTEXT("Cancelling", "正在取消…"); }
-    if (State.Status == TEXT("cancelled")) { return LOCTEXT("Cancelled", "已取消"); }
-    if (State.Status == TEXT("succeeded")) { return LOCTEXT("Succeeded", "处理完成"); }
-    if (State.Status == TEXT("idle")) { return LOCTEXT("Idle", "准备开始"); }
-    if (State.Stage == TEXT("preflight")) { return LOCTEXT("Preflight", "正在检查视频"); }
-    if (State.Stage == TEXT("reconstruct")) { return LOCTEXT("Reconstruct", "正在识别双手动作"); }
-    if (State.Stage == TEXT("solve")) { return LOCTEXT("Solve", "正在整理动作与位置"); }
-    if (State.Stage == TEXT("import")) { return LOCTEXT("Import", "正在准备编辑器素材"); }
-    if (State.Stage == TEXT("bake")) { return LOCTEXT("Bake", "正在生成动画"); }
-    if (State.Stage == TEXT("verify")) { return LOCTEXT("Verify", "正在检查结果"); }
-    if (State.Stage == TEXT("preview")) { return LOCTEXT("Preview", "正在准备结果预览"); }
-    if (State.Stage == TEXT("complete")) { return LOCTEXT("Complete", "正在完成处理"); }
-    return LOCTEXT("Running", "正在处理…");
+    if (!LocalError.IsEmpty() || State.Status == TEXT("failed")) { return LOCTEXT("Failed", "Processing Incomplete"); }
+    if (State.Status == TEXT("cancelling")) { return LOCTEXT("Cancelling", "Cancelling..."); }
+    if (State.Status == TEXT("cancelled")) { return LOCTEXT("Cancelled", "Cancelled"); }
+    if (State.Status == TEXT("succeeded")) { return LOCTEXT("Succeeded", "Processing Complete"); }
+    if (State.Status == TEXT("idle")) { return LOCTEXT("Idle", "Ready"); }
+    if (State.Stage == TEXT("preflight")) { return LOCTEXT("Preflight", "Checking Video"); }
+    if (State.Stage == TEXT("reconstruct")) { return LOCTEXT("Reconstruct", "Reconstructing Hand Motion"); }
+    if (State.Stage == TEXT("solve")) { return LOCTEXT("Solve", "Solving Motion and Position"); }
+    if (State.Stage == TEXT("import")) { return LOCTEXT("Import", "Preparing Editor Assets"); }
+    if (State.Stage == TEXT("bake")) { return LOCTEXT("Bake", "Generating Animation"); }
+    if (State.Stage == TEXT("verify")) { return LOCTEXT("Verify", "Checking Results"); }
+    if (State.Stage == TEXT("preview")) { return LOCTEXT("Preview", "Preparing Preview"); }
+    if (State.Stage == TEXT("complete")) { return LOCTEXT("Complete", "Finishing"); }
+    return LOCTEXT("Running", "Processing...");
 }
 
 FText SCardCapPanel::MessageText() const
 {
     if (!LocalError.IsEmpty()) { return FText::FromString(LocalError); }
-    if (!Snapshot().Error.IsEmpty()) { return FText::FromString(Snapshot().Error); }
-    return FText::FromString(Snapshot().Message);
+    return JobMessageText(Snapshot());
+}
+
+FText SCardCapPanel::JobMessageText(const FCardCapJobSnapshot& State)
+{
+    if (!State.Error.IsEmpty())
+    {
+        if (!State.HistoricalError.IsEmpty() && State.Error == State.HistoricalError)
+        {
+            return LOCTEXT("HistoricalError", "This saved job reported an error in an earlier version. Check View Log and status.json in the Result Folder for the original details.");
+        }
+        return FText::FromString(State.Error);
+    }
+    if (State.Status == TEXT("succeeded"))
+    {
+        return LOCTEXT("SuccessMessage", "Processing is complete. Open the scene or preview video to review the result.");
+    }
+    if (State.Status == TEXT("cancelled"))
+    {
+        return LOCTEXT("CancelledMessage", "Cancelled. Existing files remain in the result folder.");
+    }
+    if (State.Status == TEXT("idle")) { return FText::GetEmpty(); }
+    return FText::FromString(State.Message);
 }
 
 FText SCardCapPanel::ProgressText() const
@@ -416,11 +437,11 @@ FText SCardCapPanel::ProgressText() const
 FText SCardCapPanel::FrameTimeText() const
 {
     const FCardCapJobSnapshot& State = Snapshot();
-    if (State.Status == TEXT("idle")) { return LOCTEXT("NoProgress", "开始后将显示帧数和耗时。"); }
+    if (State.Status == TEXT("idle")) { return LOCTEXT("NoProgress", "Frame progress and elapsed time will appear after processing starts."); }
     const int64 Seconds = FMath::FloorToInt64(FMath::Max(0., State.ElapsedSeconds));
-    const FText Elapsed = FText::Format(LOCTEXT("Elapsed", "已用 {0} 分 {1} 秒"), FText::AsNumber(Seconds / 60), FText::AsNumber(Seconds % 60));
+    const FText Elapsed = FText::Format(LOCTEXT("Elapsed", "Elapsed: {0} min {1} sec"), FText::AsNumber(Seconds / 60), FText::AsNumber(Seconds % 60));
     if (State.FramesTotal <= 0) { return Elapsed; }
-    return FText::Format(LOCTEXT("FrameElapsed", "已处理 {0} / {1} 帧  ·  {2}"),
+    return FText::Format(LOCTEXT("FrameElapsed", "Processed {0} / {1} frames  |  {2}"),
         FText::AsNumber(FMath::Clamp(State.FramesCompleted, 0, State.FramesTotal)), FText::AsNumber(State.FramesTotal), Elapsed);
 }
 
@@ -429,8 +450,8 @@ FText SCardCapPanel::ConfidenceRangesText() const
     const FCardCapJobSnapshot& State = Snapshot();
     if (State.LowConfidenceRanges.IsEmpty())
     {
-        return State.Status == TEXT("succeeded") ? LOCTEXT("NoFlaggedRanges", "没有标记需要复核的区段。")
-            : LOCTEXT("RangesPending", "处理后显示需要复核的帧范围。");
+        return State.Status == TEXT("succeeded") ? LOCTEXT("NoFlaggedRanges", "No sections have been flagged for review.")
+            : LOCTEXT("RangesPending", "Frame ranges that need review will appear after processing.");
     }
     TArray<FString> Pieces;
     for (const FIntPoint& Range : State.LowConfidenceRanges)
@@ -438,7 +459,7 @@ FText SCardCapPanel::ConfidenceRangesText() const
         Pieces.Add(Range.X == Range.Y ? FString::FromInt(Range.X)
             : FString::Printf(TEXT("%d–%d"), Range.X, Range.Y));
     }
-    return FText::Format(LOCTEXT("Ranges", "帧范围（从 0 开始）：{0}"), FText::FromString(FString::Join(Pieces, TEXT("、"))));
+    return FText::Format(LOCTEXT("Ranges", "Frame ranges (starting at 0): {0}"), FText::FromString(FString::Join(Pieces, TEXT(", "))));
 }
 
 FText SCardCapPanel::SourceNoteText() const
@@ -447,25 +468,25 @@ FText SCardCapPanel::SourceNoteText() const
     TArray<FString> Notes;
     if (State.IsPerHandLocal())
     {
-        Notes.Add(LOCTEXT("UnknownHandSpace", "原片相机参数及双手相对位置未知，请查看左右手局部预览；局部显示不代表两手处于同一空间").ToString());
+        Notes.Add(LOCTEXT("UnknownHandSpace", "The source camera parameters and relative hand positions are unknown. Review the separate left and right hand previews; they do not place both hands in a shared space").ToString());
     }
     else if (State.IntrinsicsSource == TEXT("model-conditioned"))
     {
-        Notes.Add(LOCTEXT("ConditionalCamera", "预览使用模型相机假设，尚未测得原片相机参数").ToString());
+        Notes.Add(LOCTEXT("ConditionalCamera", "The preview uses the model's assumed camera; the source camera parameters have not been measured").ToString());
     }
     else if (State.IntrinsicsSource == TEXT("prior-based") || State.IntrinsicsSource == TEXT("metadata_35mm_equivalent"))
     {
-        Notes.Add(LOCTEXT("EstimatedCamera", "画面参数使用估计值").ToString());
+        Notes.Add(LOCTEXT("EstimatedCamera", "Camera parameters are estimated").ToString());
     }
     else if (State.IntrinsicsSource == TEXT("explicit_calibration") || State.IntrinsicsSource == TEXT("adjacent_chessboard"))
     {
-        Notes.Add(LOCTEXT("CalibrationCamera", "画面参数来自标定").ToString());
+        Notes.Add(LOCTEXT("CalibrationCamera", "Camera parameters come from calibration").ToString());
     }
-    if (State.ScaleConfidence == TEXT("unknown")) { Notes.Add(LOCTEXT("UnknownScale", "尺寸为相对量，未测得实际大小").ToString()); }
-    else if (State.ScaleConfidence == TEXT("low")) { Notes.Add(LOCTEXT("LowScale", "尺寸依据较弱，建议复核").ToString()); }
-    else if (State.ScaleConfidence == TEXT("medium")) { Notes.Add(LOCTEXT("MediumScale", "尺寸依据一般").ToString()); }
-    else if (State.ScaleConfidence == TEXT("high")) { Notes.Add(LOCTEXT("HighScale", "尺寸依据较充分").ToString()); }
-    return FText::FromString(FString::Join(Notes, TEXT("；")));
+    if (State.ScaleConfidence == TEXT("unknown")) { Notes.Add(LOCTEXT("UnknownScale", "Scale is relative; actual size has not been measured").ToString()); }
+    else if (State.ScaleConfidence == TEXT("low")) { Notes.Add(LOCTEXT("LowScale", "Scale confidence is low; review is recommended").ToString()); }
+    else if (State.ScaleConfidence == TEXT("medium")) { Notes.Add(LOCTEXT("MediumScale", "Scale confidence is medium").ToString()); }
+    else if (State.ScaleConfidence == TEXT("high")) { Notes.Add(LOCTEXT("HighScale", "Scale confidence is high").ToString()); }
+    return FText::FromString(FString::Join(Notes, TEXT("; ")));
 }
 
 #undef LOCTEXT_NAMESPACE

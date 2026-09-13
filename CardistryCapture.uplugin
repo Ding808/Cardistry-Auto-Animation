@@ -1,7 +1,7 @@
 {
   "FileVersion": 3,
-  "Version": 1,
-  "VersionName": "0.0.1",
+  "Version": 2,
+  "VersionName": "0.0.2",
   "FriendlyName": "Cardistry Capture",
   "Description": "Offline hand reconstruction with an editor panel for video processing, animation generation and review. Card reconstruction and physics remain in development.",
   "Category": "Animation",

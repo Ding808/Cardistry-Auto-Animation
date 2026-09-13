@@ -20,6 +20,9 @@ public:
     void SetVideoPath(const FString& InPath);
     bool StartProcessing(FString& OutError);
 
+    /** Presentation shared by live jobs and results restored from earlier versions. */
+    static FText JobMessageText(const FCardCapJobSnapshot& State);
+
 private:
     const FCardCapJobSnapshot& Snapshot() const;
     bool IsRunning() const;

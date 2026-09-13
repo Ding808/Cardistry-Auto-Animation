@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import urllib.request
 
+from cardcap import __version__
 COMMIT = "fcb911312a38fa8badd30d9656a167485d61b8f9"
 FILES = {
     "wilor/models/backbones/vit.py": "5424ff143d2a8db9f0a722da34857bff2559c4867d9295fb3648e0293f5de013",
@@ -28,7 +29,7 @@ def prepare(destination: Path, *, accepted_model_licenses: bool, check_only: boo
         elif check_only:
             raise FileNotFoundError(f"Missing model source: {relative}. Run Scripts/Setup.cmd.")
         else:
-            request = urllib.request.Request(url, headers={"User-Agent": "CardistryCapture-Setup/0.0.1"})
+            request = urllib.request.Request(url, headers={"User-Agent": f"CardistryCapture-Setup/{__version__}"})
             with urllib.request.urlopen(request, timeout=60) as response:
                 content = response.read(1024 * 1024)
         if hashlib.sha256(content).hexdigest() != expected:

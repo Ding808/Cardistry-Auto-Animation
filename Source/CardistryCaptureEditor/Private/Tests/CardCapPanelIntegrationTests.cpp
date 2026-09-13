@@ -210,7 +210,7 @@ public:
             {
                 if (Bridge->GetProcessId() != 0 || Bridge->GetSnapshot().JobId != PreviousJob)
                 { return Fail(TEXT("Invalid input unexpectedly launched/replaced a job.")); }
-                if (!VisibleText.Contains(TEXT("请选择本机存在的视频文件")))
+                if (!VisibleText.Contains(TEXT("Choose a video file that exists on this computer")))
                 { return Fail(TEXT("Expected actual visible missing-video error; got: ") + VisibleText); }
                 if (!Screenshot(TEXT("panel_invalid_path"))) { return Fail(TEXT("Invalid-path screenshot failed.")); }
                 return Complete();

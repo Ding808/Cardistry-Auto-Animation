@@ -225,7 +225,7 @@ class LocalPosePreviewTests(unittest.TestCase):
                 self.assertEqual(fixture.worker().run(), 1)
                 status = job.read_json(fixture.root / 'status.json')
                 self.assertEqual(status['status'], 'failed')
-                self.assertIn('过小或不可见', status['error']['message'])
+                self.assertIn('too small or invisible', status['error']['message'])
                 self.assertFalse((fixture.root / 'job_result.json').exists())
                 self.assertFalse((fixture.root / 'Preview').exists())
                 self.assertEqual(len(fixture.calls), 3)  # Failed before reload or success publication.
@@ -307,7 +307,7 @@ class LocalPosePreviewTests(unittest.TestCase):
             render = job.read_json(path)
             render['view_mode'] = 'shared_camera'
             write_json(path, render)
-            with self.assertRaisesRegex(ValueError, '左右手独立局部预览'):
+            with self.assertRaisesRegex(ValueError, 'separate local hand previews'):
                 job.build_preview(fixture.root / 'request.json')
             self.assertFalse((fixture.root / 'Preview/preview.json').exists())
 
@@ -316,7 +316,7 @@ class LocalPosePreviewTests(unittest.TestCase):
             for mode in ('invisible_side', 'tiny_side'):
                 with self.subTest(side=side, mode=mode), tempfile.TemporaryDirectory() as temporary:
                     fixture = self.make_fixture(temporary, **{mode: side})
-                    with self.assertRaisesRegex(ValueError, '过小或不可见'):
+                    with self.assertRaisesRegex(ValueError, 'too small or invisible'):
                         job.build_preview(fixture.root / 'request.json')
                     self.assertFalse((fixture.root / 'Preview/preview.json').exists())
                     gate = job.read_json(fixture.root / 'Preview/display_geometry_review.json')

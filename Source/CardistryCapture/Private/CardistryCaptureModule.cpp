@@ -8,7 +8,7 @@ class FCardistryCaptureModule final : public IModuleInterface
 public:
     virtual void StartupModule() override
     {
-        UE_LOG(LogCardistryCapture, Display, TEXT("CardistryCapture runtime module loaded (0.0.1)."));
+        UE_LOG(LogCardistryCapture, Display, TEXT("CardistryCapture runtime module loaded (0.0.2)."));
     }
 
     virtual void ShutdownModule() override

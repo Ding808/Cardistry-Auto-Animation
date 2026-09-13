@@ -17,6 +17,9 @@ struct FCardCapJobSnapshot
     FString JobId, Status = TEXT("idle"), Stage, Message, Error, LogPath;
     FString OutputDirectory, PreviewVideo, CaptureFile, MapAsset, SequenceAsset, AnimationAsset;
     FString ScaleConfidence, IntrinsicsSource, CoordinateFrame;
+    // Retain old diagnostics for logs while presenting restored jobs in English.
+    FString HistoricalError;
+    bool bMessagesAreEnglish = false;
     double Progress = 0, ElapsedSeconds = 0, Fps = 0;
     int32 FramesCompleted = 0, FramesTotal = 0;
     TArray<FIntPoint> LowConfidenceRanges;

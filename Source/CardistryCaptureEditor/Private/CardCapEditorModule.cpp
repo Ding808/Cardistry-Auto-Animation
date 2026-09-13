@@ -26,8 +26,8 @@ void FCardCapEditorModule::StartupModule()
     Bridge = MakeShared<FCardCapPythonBridge>();
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TabName,
         FOnSpawnTab::CreateRaw(this, &FCardCapEditorModule::SpawnPanel))
-        .SetDisplayName(LOCTEXT("PanelTitle", "花切动作捕获"))
-        .SetTooltipText(LOCTEXT("PanelTooltip", "从视频生成双手动作，并查看场景、动画和对照视频。"))
+        .SetDisplayName(LOCTEXT("PanelTitle", "Cardistry Capture"))
+        .SetTooltipText(LOCTEXT("PanelTooltip", "Generate hand motion from video and review the scene, animation, and comparison video."))
         .SetMenuType(ETabSpawnerMenuType::Hidden);
     UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FCardCapEditorModule::RegisterMenus));
     bUiRegistered = true;
@@ -67,8 +67,8 @@ void FCardCapEditorModule::RegisterMenus()
         UToolMenu* Menu = UToolMenus::Get()->ExtendMenu(MenuName);
         FToolMenuSection& Section = Menu->FindOrAddSection(TEXT("CardistryCapture"));
         Section.AddMenuEntry(TEXT("CardistryCapture.OpenPanel"),
-            LOCTEXT("OpenPanel", "花切动作捕获"),
-            LOCTEXT("OpenPanelHint", "Cardistry Capture：从视频生成并查看双手动作。"),
+            LOCTEXT("OpenPanel", "Cardistry Capture"),
+            LOCTEXT("OpenPanelHint", "Cardistry Capture: generate and review hand motion from video."),
             FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FCardCapEditorModule::OpenPanel)));
     }
 }
